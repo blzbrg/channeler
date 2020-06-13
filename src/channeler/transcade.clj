@@ -1,17 +1,14 @@
 (ns channeler.transcade)
 
-(defn ^:private applicable?
-  [transformer state]
-  ((transformer :applicable-fn) state))
+(defprotocol Transformer
+  "A single transformer, a sequence of these combine to be a transcade"
+  (applicable? [this state] "Whether this transformer is applicable to the given state")
+  (transform [this state] "Take state and transform it, returning new state."))
 
 (defn ^:private select-applicable
   [transcade state]
   (first (drop-while (fn [trans] (not (applicable? trans state)))
                      (transcade :transformers))))
-
-(defn ^:private apply-transform
-  [transformer state]
-  ((transformer :transform-fn) state))
 
 (defn transform-step
   "A single step of the transform. Either executes one transform and
@@ -19,7 +16,7 @@
   none are applicable) and returns [:unchanged state]."
   [transcade state]
   (if-let [trans (select-applicable transcade state)]
-    [:new-state (apply-transform trans state)]
+    [:new-state (transform trans state)]
     [:unchanged state]))
 
 (defn inline-loop
