@@ -12,5 +12,4 @@
   [board-name thread-id]
   (let [state (state/initial-state {})]
     (loop [th (chan-th/init-thread state (thread-url board-name thread-id))]
-      (Thread/sleep (* 1000 10))
-      (recur (chan-th/update-posts state th)))))
+      (chan-th/export-thread state th))))

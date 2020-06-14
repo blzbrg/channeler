@@ -1,6 +1,8 @@
 (ns channeler.chan-th
   (:require [channeler.transcade :as transcade]
+            [channeler.state :as state]
             [clojure.data.json :as json]
+            [clojure.walk :as walk]
             ))
 
 (defn ^:private new-posts
@@ -21,6 +23,23 @@
   the post-transcade"
   [{post-transcade :post-transcade} json-posts]
   (map (fn [post] (transcade/inline-loop post-transcade post)) json-posts))
+
+(defn ^:private eliminate-symbol-keys
+  [m]
+  (into {} (filter (fn [[k v]] (not (keyword? k))) m)))
+
+(defn ^:private trim-for-export
+  [_ coll]
+  (walk/prewalk #(if (map? %) (eliminate-symbol-keys %) %) coll))
+
+(defn ^:private export-path
+  [{dir ::state/dir} {posts "posts"}]
+  (format "%s/%d.json" dir ((first posts) "no")))
+
+(defn export-thread
+  [state th]
+  (with-open [w (clojure.java.io/writer (export-path state th))]
+    (json/write th w)))
 
 (defn init-thread
   [state url]
