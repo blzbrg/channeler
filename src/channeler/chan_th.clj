@@ -23,15 +23,15 @@
   (map (fn [post] (transcade/inline-loop post-transcade post)) json-posts))
 
 (defn init-thread
-  [static-conf url]
-  (let [state (assoc (fetch url) ::url url)
-        posts (process-posts static-conf (state "posts"))]
-    (assoc state "posts" posts)))
+  [state url]
+  (let [th (assoc (fetch url) ::url url)
+        posts (process-posts state (th "posts"))]
+    (assoc th "posts" posts)))
 
 (defn update-posts
   "Uses side effects to update the passed thread, applying post transforms, and returns the new
   version"
-  [static-conf {url ::url old-posts "posts" :as old-thread}]
+  [state {url ::url old-posts "posts" :as old-thread}]
   (let [raw-new-posts (new-posts-from-json old-posts (fetch url))
-        processed-new-posts (process-posts static-conf raw-new-posts)]
+        processed-new-posts (process-posts state raw-new-posts)]
     (assoc old-thread "posts" (conj old-posts processed-new-posts))))

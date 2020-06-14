@@ -1,6 +1,6 @@
 (ns channeler.core
   (:gen-class)
-  (:require [channeler.static-config :as  static-config]
+  (:require [channeler.state :as state]
             [channeler.chan-th :as chan-th]
             ))
 
@@ -10,7 +10,7 @@
 
 (defn -main
   [board-name thread-id]
-  (let [static-conf static-config/default]
-    (loop [th (chan-th/init-thread static-conf (thread-url board-name thread-id))]
+  (let [state (state/initial-state {})]
+    (loop [th (chan-th/init-thread state (thread-url board-name thread-id))]
       (Thread/sleep (* 1000 10))
-      (recur (chan-th/update-posts static-conf th)))))
+      (recur (chan-th/update-posts state th)))))
