@@ -8,11 +8,11 @@
   call (foo.bar/plugin-main)"
   [{ns-str "namespace" :as plug-conf}]
   (require (symbol ns-str))
-  (eval (list (symbol ns-str "plugin-main"))))
+  (eval (list (symbol ns-str "plugin-main") plug-conf)))
 
 (defn ^:private init-plugins!
   [plug-confs]
-  (doseq [c (vals plug-confs)]
+  (doseq [c plug-confs]
     (init-clj-plugin! c)))
 
 (defn ^:private put-transcades-into-state
