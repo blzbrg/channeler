@@ -7,7 +7,7 @@
 
 (defn -main
   [board-name thread-id]
-  (let [plugin-configs () ; TODO: non-empty plugin configs
+  (let [plugin-configs (list {"namespace" "channeler.image-download"})
         state (-> {}
                   (state/initial-state)
                   (plugin-loader/load-plugins plugin-configs))]
