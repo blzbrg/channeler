@@ -21,8 +21,9 @@
 (defn ^:private process-posts
   "Take posts in json format and process them into our format, by using
   the post-transcade"
-  [{post-transcade :post-transcade} json-posts]
-  (map (fn [post] (transcade/inline-loop post-transcade post)) json-posts))
+  [{post-transcade :post-transcade} th json-posts]
+  (map (fn [post] (transcade/inline-loop post-transcade th post))
+       json-posts))
 
 (defn ^:private eliminate-symbol-keys
   [m]
@@ -41,10 +42,17 @@
   (with-open [w (clojure.java.io/writer (export-path state th))]
     (json/write th w)))
 
+(defn thread-url
+  [board thread]
+  (format "https://a.4cdn.org/%s/thread/%s.json" board thread))
+
 (defn init-thread
-  [state url]
-  (let [th (assoc (fetch url) ::url url)
-        posts (process-posts state (th "posts"))]
+  [state board-name thread-id]
+  (let [url (thread-url board-name thread-id)
+        th (-> (fetch url)
+               (assoc ::url url)
+               (assoc ::board board-name))
+        posts (process-posts state th (th "posts"))]
     (assoc th "posts" posts)))
 
 (defn update-posts
@@ -52,5 +60,5 @@
   version"
   [state {url ::url old-posts "posts" :as old-thread}]
   (let [raw-new-posts (new-posts-from-json old-posts (fetch url))
-        processed-new-posts (process-posts state raw-new-posts)]
+        processed-new-posts (process-posts state old-thread raw-new-posts)]
     (assoc old-thread "posts" (conj old-posts processed-new-posts))))

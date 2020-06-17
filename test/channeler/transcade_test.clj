@@ -4,8 +4,8 @@
 
 (defrecord ATo10 []
   transcade/Transformer
-  (applicable? [this state] (< (state :a) 10))
-  (transform [this state] (update state :a inc)))
+  (applicable? [this _ state] (< (state :a) 10))
+  (transform [this _ state] (update state :a inc)))
 
 (defn make-min
   [& transformer-seq]
@@ -16,8 +16,8 @@
 
 (deftest a-to-10-step-test
   (is {:a 2}
-      (transcade/transform-step a-to-10 {:a 1})))
+      (transcade/transform-step a-to-10 nil {:a 1})))
 
 (deftest a-to-10-test
   (is {:a 9}
-      (transcade/inline-loop a-to-10 {:a 1})))
+      (transcade/inline-loop a-to-10 nil {:a 1})))
