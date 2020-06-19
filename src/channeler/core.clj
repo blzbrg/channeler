@@ -3,11 +3,12 @@
   (:require [channeler.state :as state]
             [channeler.plugin-loader :as plugin-loader]
             [channeler.chan-th :as chan-th]
-            ))
+            [channeler.config :as config]))
 
 (defn -main
   [board-name thread-id]
-  (let [plugin-configs (list {"namespace" "channeler.image-download"})
+  (let [conf (config/from-file)
+        plugin-configs (list {"namespace" "channeler.image-download"})
         state (-> {}
                   (state/initial-state)
                   (plugin-loader/load-plugins plugin-configs))]
