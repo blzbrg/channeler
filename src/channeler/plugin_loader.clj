@@ -6,16 +6,16 @@
   "Given the fully-qualified namespace for a plugin that can be found on
   the classpath, and a config, load that plugin. For example, if
   \"foo.bar\" is passed, will call (foo.bar/plugin-main)"
-  [ns-str plug-conf]
+  [state ns-str plug-conf]
   (require (symbol ns-str))
-  (eval (list (symbol ns-str "plugin-main") plug-conf)))
+  (eval (list (symbol ns-str "plugin-main") state plug-conf)))
 
 (defn ^:private init-plugins!
   "Switch over plugin types - use the appropriate init fn for each."
-  [plug-confs]
-  (doseq [[name conf] plug-confs]
+  [state plugin-configs]
+  (doseq [[name conf] plugin-configs]
     (case (conf "type")
-      "clojure-ns" (init-clj-plugin! name conf))))
+      "clojure-ns" (init-clj-plugin! state name conf))))
 
 (defn ^:private put-transcades-into-state
   [state plugin-reg]
@@ -26,6 +26,6 @@
   (put-transcades-into-state state plugin-reg))
 
 (defn load-plugins
-  [state plug-confs]
-  (init-plugins! plug-confs)
+  [state plugin-configs]
+  (init-plugins! state plugin-configs)
   (plugin-into-state state @plugin/reg-state))

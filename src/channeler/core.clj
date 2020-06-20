@@ -9,8 +9,7 @@
   [board-name thread-id]
   (let [conf (config/from-file)
         plugin-configs (conf "plugins")
-        state (-> {}
-                  (state/initial-state)
+        state (-> (state/initial-state conf)
                   (plugin-loader/load-plugins plugin-configs))]
     (loop [th (chan-th/init-thread state board-name thread-id)]
       (chan-th/export-thread state th))))

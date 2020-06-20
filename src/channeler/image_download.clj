@@ -11,23 +11,23 @@
   (and (contains? post-json "tim") (contains? post-json "ext")))
 
 (defn ^:private download
-  [remote-path local-path]
+  [remote-path local]
   (with-open [in (clojure.java.io/input-stream remote-path)
-              out (clojure.java.io/output-stream local-path)]
+              out (clojure.java.io/output-stream local)]
     (clojure.java.io/copy in out)))
 
 (defrecord ImageDownload [dir]
   transcade/Transformer
-  (applicable? [_ _ state] (and (not (contains? state ::local-image-path))
-                                (has-image state)))
-  (transform [{dir :dir} {board :channeler.chan-th/board} state]
-    (let [web-filename (clojure.string/join (list (state "tim") (state "ext")))
-          url (image-url board (state "tim") (state "ext"))
-          local-path (clojure.string/join (list dir web-filename))]
-      (download url local-path)
-      (assoc state ::local-image-path local-path))))
+  (applicable? [_ _ post] (and (not (contains? post ::local-image-path))
+                               (has-image post)))
+  (transform [{dir :dir} {board :channeler.chan-th/board} post]
+    (let [web-filename (clojure.string/join (list (post "tim") (post "ext")))
+          url (image-url board (post "tim") (post "ext"))
+          local (clojure.java.io/file dir web-filename)]
+      (download url local)
+      (assoc post ::local-image-path (.getAbsolutePath local)))))
 
 (defn plugin-main
-  [conf]
-  (let [post-transform (->ImageDownload (conf :channeler.state/dir))]
+  [state _]  ; ignore plug conf for now
+  (let [post-transform (->ImageDownload (state :channeler.state/dir))]
     (plugin/register-post-transform post-transform)))
