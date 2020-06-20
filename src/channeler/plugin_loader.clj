@@ -3,17 +3,19 @@
             ))
 
 (defn ^:private init-clj-plugin!
-  "Pass the fully-qualified namespace for a plugin that can be found on
-  the classpath. For example, if \"foo.bar\" is passed, will
-  call (foo.bar/plugin-main)"
-  [{ns-str "namespace" :as plug-conf}]
+  "Given the fully-qualified namespace for a plugin that can be found on
+  the classpath, and a config, load that plugin. For example, if
+  \"foo.bar\" is passed, will call (foo.bar/plugin-main)"
+  [ns-str plug-conf]
   (require (symbol ns-str))
   (eval (list (symbol ns-str "plugin-main") plug-conf)))
 
 (defn ^:private init-plugins!
+  "Switch over plugin types - use the appropriate init fn for each."
   [plug-confs]
-  (doseq [c plug-confs]
-    (init-clj-plugin! c)))
+  (doseq [[name conf] plug-confs]
+    (case (conf "type")
+      "clojure-ns" (init-clj-plugin! name conf))))
 
 (defn ^:private put-transcades-into-state
   [state plugin-reg]

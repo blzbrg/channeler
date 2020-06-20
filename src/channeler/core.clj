@@ -8,7 +8,7 @@
 (defn -main
   [board-name thread-id]
   (let [conf (config/from-file)
-        plugin-configs (list {"namespace" "channeler.image-download"})
+        plugin-configs {"channeler.image-download" {"type" "clojure-ns"}}
         state (-> {}
                   (state/initial-state)
                   (plugin-loader/load-plugins plugin-configs))]
