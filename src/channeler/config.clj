@@ -36,7 +36,7 @@
   (json/read (io/reader path)))
 
 (def default-conf
-  {})
+  {"plugins" {"channeler.image-download" {"type" "clojure-ns"}}})
 
 (defn from-file
   "Load a config, either from a provided path, or from the default locations (documented in
