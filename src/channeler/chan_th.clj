@@ -37,10 +37,14 @@
   [{dir ::state/dir} {posts "posts"}]
   (format "%s/%d.json" dir ((first posts) "no")))
 
+(def ^:private write-options
+  (list :escape-unicode false :escape-js-separators false
+        :escape-slash false))
+
 (defn export-thread
   [state th]
   (with-open [w (clojure.java.io/writer (export-path state th))]
-    (json/write th w)))
+    (apply json/write th w write-options)))
 
 (defn thread-url
   [board thread]
