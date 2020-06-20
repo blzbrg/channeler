@@ -30,7 +30,7 @@
   (into {} (filter (fn [[k v]] (not (keyword? k))) m)))
 
 (defn ^:private trim-for-export
-  [_ coll]
+  [coll]
   (walk/prewalk #(if (map? %) (eliminate-symbol-keys %) %) coll))
 
 (defn ^:private export-path
@@ -44,7 +44,7 @@
 (defn export-thread
   [state th]
   (with-open [w (clojure.java.io/writer (export-path state th))]
-    (apply json/write th w write-options)))
+    (apply json/write (trim-for-export th) w write-options)))
 
 (defn thread-url
   [board thread]
