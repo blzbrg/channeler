@@ -3,13 +3,28 @@
   (:require [channeler.state :as state]
             [channeler.plugin-loader :as plugin-loader]
             [channeler.chan-th :as chan-th]
-            ))
+            [channeler.config :as config]
+            [clojure.tools.cli :as cli]))
+
+(defn eprintln
+  [& args]
+  (binding [*out* *err*] (apply println args)))
+
+(defn do-cli
+  [args]
+  (let [opts (cli/parse-opts args config/override-options)]
+    (if-let [errs (opts :errors)]
+      (do (eprintln errs)
+          (System/exit 1))
+      opts)))
 
 (defn -main
-  [board-name thread-id]
-  (let [plugin-configs (list {"namespace" "channeler.image-download"})
-        state (-> {}
-                  (state/initial-state)
+  [& args]
+  (let [{cli-opts :options [board-name thread-id] :arguments} (do-cli args)
+        raw-conf (config/from-file)
+        conf (config/incorporate-cli-options raw-conf cli-opts)
+        plugin-configs (conf "plugins")
+        state (-> (state/initial-state conf)
                   (plugin-loader/load-plugins plugin-configs))]
     (loop [th (chan-th/init-thread state board-name thread-id)]
       (chan-th/export-thread state th))))
