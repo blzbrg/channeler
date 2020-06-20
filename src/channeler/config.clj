@@ -31,12 +31,39 @@
       f
       (if tail (recur tail) nil)))) ; tail will be nil when we get to the end
 
+(defn ^:private json-wrapper
+  [read-fn input & args]
+  (try (apply read-fn input (list* :eof-error? false :eof-value nil args))
+       (catch Exception e nil)))
+
 (defn ^:private load-from-path
   [path]
   (json/read (io/reader path)))
 
 (def default-conf
   {"plugins" {"channeler.image-download" {"type" "clojure-ns"}}})
+
+(def override-options
+  [["-m" "--mergeOpts JSON" "JSON structure to merge with the config loaded from files"
+    :id :merge-opts
+    :parse-fn (partial json-wrapper json/read-str)
+    :validate [#(map? %) "Must parse to a valid JSON map"]]])
+
+(defn merge-json-vals
+  "If two values are maps, merge them, if they are vectors, conj all items from one into the
+  other. Otherwise, the second replaced the first"
+  [a-val b-val]
+   (cond ; use the cond to cover every data type produced when parsin json
+     ;; for maps, recursively merge them
+     (every? map? [a-val b-val]) (merge-with merge-json-vals a-val b-val)
+     ;; for vectors, append b to a
+     (every? vector? [a-val b-val]) (apply conj a-val b-val)
+     ;; if types don't match, just replace first with second
+     :else b-val))
+
+(defn incorporate-cli-options
+  [conf {merge-opts :merge-opts}]
+  (merge-json-vals conf merge-opts))
 
 (defn from-file
   "Load a config, either from a provided path, or from the default locations (documented in
