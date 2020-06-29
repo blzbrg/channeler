@@ -1,9 +1,35 @@
-(ns channeler.transcade)
+(ns channeler.transcade
+  (:require [clojure.core.async :as async]))
 
 (defprotocol Transformer
   "A single transformer, a sequence of these combine to be a transcade"
   (applicable? [this ctx state] "Whether this transformer is applicable to the given state")
   (transform [this ctx state] "Take state and transform it, returning new state."))
+
+(defn ^:private chan-await
+  "Transform state by waiting for one of the chans in ::awaits to
+  produce a value. When this happens, store a mapping from the channel
+  to the value in ::await-results. If the channel is closed, the
+  special value ::closed is stored.
+
+  If a transformer expects to receive more than one message on the
+  channel is should re-add the channel to ::awaits after it has
+  processed the value retrived."
+  [state]
+  (let [[val chan] (async/alts!! (vec (state ::awaits)))
+        eff-val (if (nil? val) ::closed val)]
+    (-> state
+        (assoc-in [::await-results chan] eff-val) ; put in results
+        (update-in [::awaits] disj chan)))) ; remove from awaits
+
+(defn push-awaits
+  [post chan]
+  (update post ::awaits (fn [awaits] (conj (or awaits #{}) chan))))
+
+(defn pop-awaits-result
+  [post chan-to-pop]
+  (let [res (get-in post [::await-results chan-to-pop])]
+    [res (update-in post [::await-results] dissoc chan-to-pop)]))
 
 (defn ^:private select-applicable
   [transcade ctx state]
@@ -17,7 +43,9 @@
   [transcade ctx state]
   (if-let [trans (select-applicable transcade ctx state)]
     [:new-state (transform trans ctx state)]
-    [:unchanged state]))
+    (if (not (empty? (state ::awaits))) ; awaits present and non-empty
+      [:new-state (chan-await state )]
+      [:unchanged state])))
 
 (defn inline-loop
   "Perform transform-step until transform-step returns [:unchanged
