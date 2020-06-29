@@ -23,13 +23,17 @@
     ;; if the channell is closed, end the loop
     nil))
 
-(defn make-chan
+(defn make-response-chan
   []
-  (async/chan)) ; TODO: buffer
+  (async/promise-chan))
+
+(defn make-request-chan
+  []
+  (async/chan 50))
 
 (defn init
   [state]
-  (let [chan (make-chan)
+  (let [chan (make-request-chan)
         ;; spawn thread - do not wait for end since we assume it never ends
         _ (future (download-loop chan))]
     (assoc state :channeler.state/async-dl-chan chan)))

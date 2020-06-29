@@ -23,7 +23,7 @@
   (let [web-filename (clojure.string/join (list (post "tim") (post "ext")))
         url (image-url board (post "tim") (post "ext"))
         local (clojure.java.io/file dir web-filename)
-        resp-chan (async/chan)]
+        resp-chan (async-dl/make-response-chan)]
     (async/>!! dl-chan (async-dl/dl-request url local resp-chan))
     (-> post
         (transcade/push-awaits resp-chan)
