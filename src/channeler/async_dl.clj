@@ -34,6 +34,14 @@
 (defn init
   [state]
   (let [chan (make-request-chan)
-        ;; spawn thread - do not wait for end since we assume it never ends
+        ;; spawn thread - no need to keep reference to the future, we will never look at the result.
         _ (future (download-loop chan))]
     (assoc state :channeler.state/async-dl-chan chan)))
+
+(defn deinit
+  "End the state and asynchronous jobs created during init. Shoudld be called when the application
+  itends to do an orderly shutdown."
+  [{chan :channeler.state/async-dl-chan}]
+  ;; closing the channel will cause the download-loop to exit and the thread to end. Returning from
+  ;; the main thread won't kill this thread!
+  (async/close! chan))
