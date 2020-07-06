@@ -4,6 +4,7 @@
             [channeler.plugin-loader :as plugin-loader]
             [channeler.chan-th :as chan-th]
             [channeler.config :as config]
+            [channeler.async-dl :as async-dl]
             [clojure.tools.cli :as cli]))
 
 (defn eprintln
@@ -25,6 +26,7 @@
         conf (config/incorporate-cli-options raw-conf cli-opts)
         plugin-configs (conf "plugins")
         state (-> (state/initial-state conf)
+                  (async-dl/init)
                   (plugin-loader/load-plugins plugin-configs))]
     (loop [th (chan-th/init-thread state board-name thread-id)]
       (chan-th/export-thread state th))))

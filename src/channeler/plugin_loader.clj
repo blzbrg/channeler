@@ -8,7 +8,8 @@
   \"foo.bar\" is passed, will call (foo.bar/plugin-main)"
   [state ns-str plug-conf]
   (require (symbol ns-str))
-  (eval (list (symbol ns-str "plugin-main") state plug-conf)))
+  (let [fun (resolve (symbol ns-str "plugin-main"))]
+    (fun state plug-conf)))
 
 (defn ^:private init-plugins!
   "Switch over plugin types - use the appropriate init fn for each."
