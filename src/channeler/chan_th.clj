@@ -3,6 +3,7 @@
             [channeler.state :as state]
             [clojure.data.json :as json]
             [clojure.walk :as walk]
+            [clojure.core.async :as async]
             ))
 
 (defn ^:private new-posts
@@ -18,12 +19,23 @@
   [url]
   (json/read (clojure.java.io/reader url)))
 
+(defn ^:private post-routine
+  [post-transcade th post]
+  (async/go (transcade/inline-loop post-transcade th post)))
+
 (defn ^:private process-posts
   "Take posts in json format and process them into our format, by using
   the post-transcade"
   [{post-transcade :post-transcade} th json-posts]
-  (map (fn [post] (transcade/inline-loop post-transcade th post))
-       json-posts))
+  (->> json-posts
+       ;; channel for each post (fed by coroutine)
+       (map (partial post-routine post-transcade th))
+       ;; get only one thing
+       (map (partial async/take 1))
+       ;; collect into one channel with the results of all the others
+       (async/map list)
+       ;; block our thread waiting for the channel. This had better not be in a coroutine!
+       (async/<!!)))
 
 (defn ^:private eliminate-symbol-keys
   [m]
