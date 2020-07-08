@@ -14,12 +14,22 @@
     (io/copy in out))
   (async/>!! response-chan [::done remote local]))
 
+(defn ^:private conf-accessor
+  [state & keys]
+  (get-in state (concat [:channeler.state/config "async-dl"] keys)))
+
 (defn download-loop
-  [pull-chan]
+  [pull-chan interval-sec]
   (if-let [request (async/<!! pull-chan)]
     ;; if we got a request, handle it then wait again
     (do (handle-request request)
-        (recur pull-chan))
+        ;; Sleep is only ok if we have a thread all to ourselves (no coroutines)!
+        ;;
+        ;; An alternative aproach is to wait the interval between the _start of downloads or use
+        ;; some kind of exponential backoff, but this implementation is 1. simple and 2. trivially
+        ;; complies with the 4chan API rules
+        (Thread/sleep (* 1000 interval-sec))
+        (recur pull-chan interval-sec))
     ;; if the channell is closed, end the loop
     nil))
 
@@ -33,9 +43,10 @@
 
 (defn init
   [state]
-  (let [chan (make-request-chan)
+  (let [interval-sec (conf-accessor state "min-sec-between-downloads")
+        chan (make-request-chan)
         ;; spawn thread - no need to keep reference to the future, we will never look at the result.
-        _ (future (download-loop chan))]
+        _ (future (download-loop chan interval-sec))]
     (assoc state :channeler.state/async-dl-chan chan)))
 
 (defn deinit

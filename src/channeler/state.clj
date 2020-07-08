@@ -10,4 +10,4 @@
   [options]
   (merge static-defaults
          {::dir (or (options "dir") (System/getProperty "user.dir"))
-          }))
+          ::config options}))
