@@ -29,4 +29,5 @@
                   (async-dl/init)
                   (plugin-loader/load-plugins plugin-configs))]
     (loop [th (chan-th/init-thread state board-name thread-id)]
-      (chan-th/export-thread state th))))
+      (chan-th/export-thread state th))
+    (async-dl/deinit state)))
