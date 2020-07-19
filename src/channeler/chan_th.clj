@@ -84,3 +84,11 @@
            (process-posts state old-thread)
            (conj old-posts)
            (assoc old-thread "posts")))))
+
+(defn thread-loop
+  "Refresh thread, infinitely, inline. Sleeps thread to wait."
+  [state th]
+  (export-thread state th)
+  (Thread/sleep (* 10 1000))
+  (println "Updating" (th ::url))
+  (recur state (update-posts state th)))
