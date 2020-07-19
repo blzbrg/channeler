@@ -24,7 +24,7 @@
         url (image-url board (post "tim") (post "ext"))
         local (clojure.java.io/file dir web-filename)
         resp-chan (async-dl/make-response-chan)]
-    (async/>!! dl-chan (async-dl/dl-request url local resp-chan))
+    (async/put! dl-chan (async-dl/dl-request url local resp-chan))
     (-> post
         (transcade/push-awaits resp-chan)
         (assoc ::dl-chan resp-chan))))
