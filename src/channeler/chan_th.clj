@@ -21,7 +21,7 @@
 
 (defn ^:private post-routine
   [post-transcade th post]
-  (async/go (transcade/inline-loop post-transcade th post)))
+  (transcade/coroutine-loop post-transcade th post))
 
 (defn ^:private process-posts
   "Take posts in json format and process them into our format, by using

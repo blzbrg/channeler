@@ -58,3 +58,31 @@
       (case was-it-changed
         :new-state (recur new-state)
         :unchanged current-state))))
+
+(defn ^:private eff-val
+  [val]
+  (if (nil? val) ::closed val))
+
+(defn coroutine-loop
+  "Return go block that executes the given transcade on the init-state,
+  using the context ctx. The result channel of the go block will be
+  the final state (once the transcade has terminated).
+
+  Transforms cannot use >!, >!!, etc. because they will be separated
+  from the top of the go block by a function call, but they can use
+  put! and store channels in ::awaits to request that the transcate
+  dequeue a value from the channel on their behalf."
+  [transcade ctx init-state]
+  (async/go-loop [current-state init-state]
+    (if-let [trans (select-applicable transcade ctx current-state)]
+      ;; if a transcade is eligible straight-away, do it
+      (recur (transform trans ctx current-state))
+      ;; if none are eligible, check if there are any chans to await
+      (if (not (empty? (current-state ::awaits)))
+        ;; if there are awaits, wait for one of them
+        (let [[chan val] (async/alts! (vec (current-state ::awaits)))]
+          (-> current-state
+              (assoc-in [::await-results chan] (eff-val val)) ; put in results
+              (update-in [::awaits] disj chan))) ; remove from awaits
+        ;; if there are no awaits, we are done
+        current-state))))
