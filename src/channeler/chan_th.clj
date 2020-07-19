@@ -89,6 +89,7 @@
   "Refresh thread, infinitely, inline. Sleeps thread to wait."
   [state th]
   (export-thread state th)
-  (Thread/sleep (* 10 1000))
+  (let [wait (get-in state [:channeler.state/config "thread" "min-sec-between-refresh"])]
+    (Thread/sleep (* wait 1000)))
   (println "Updating" (th ::url))
   (recur state (update-posts state th)))
