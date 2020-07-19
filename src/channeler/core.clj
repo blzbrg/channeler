@@ -29,5 +29,8 @@
                   (async-dl/init)
                   (plugin-loader/load-plugins plugin-configs))]
     (loop [th (chan-th/init-thread state board-name thread-id)]
-      (chan-th/export-thread state th))
+      (chan-th/export-thread state th)
+      (Thread/sleep (* 10 1000))
+      (println "Updating" (th ::chan-th/url))
+      (recur (chan-th/update-posts state th)))
     (async-dl/deinit state)))
