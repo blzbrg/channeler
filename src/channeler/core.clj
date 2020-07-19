@@ -27,7 +27,7 @@
         plugin-configs (conf "plugins")
         state (-> (state/initial-state conf)
                   (async-dl/init)
-                  (plugin-loader/load-plugins plugin-configs))]
-    (loop [th (chan-th/init-thread state board-name thread-id)]
-      (chan-th/export-thread state th))
+                  (plugin-loader/load-plugins plugin-configs))
+        th (chan-th/init-thread state board-name thread-id)]
+    (chan-th/thread-loop state th)
     (async-dl/deinit state)))

@@ -42,7 +42,8 @@
 
 (def default-conf
   {"plugins" {"channeler.image-download" {"type" "clojure-ns"}}
-   "async-dl" {"min-sec-between-downloads" 1}})
+   "async-dl" {"min-sec-between-downloads" 1}
+   "thread" {"min-sec-between-refresh" 10}})
 
 (def override-options
   [["-m" "--mergeOpts JSON" "JSON structure to merge with the config loaded from files"

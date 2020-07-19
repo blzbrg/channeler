@@ -75,6 +75,21 @@
   "Uses side effects to update the passed thread, applying post transforms, and returns the new
   version"
   [state {url ::url old-posts "posts" :as old-thread}]
-  (let [raw-new-posts (new-posts-from-json old-posts (fetch url))
-        processed-new-posts (process-posts state old-thread raw-new-posts)]
-    (assoc old-thread "posts" (conj old-posts processed-new-posts))))
+  (let [raw-new-posts (new-posts-from-json old-posts (fetch url))]
+    (if (empty? raw-new-posts)
+      ;; thread unchanged
+      old-thread
+      ;; process new posts
+      (->> (new-posts-from-json old-posts (fetch url))
+           (process-posts state old-thread)
+           (conj old-posts)
+           (assoc old-thread "posts")))))
+
+(defn thread-loop
+  "Refresh thread, infinitely, inline. Sleeps thread to wait."
+  [state th]
+  (export-thread state th)
+  (let [wait (get-in state [:channeler.state/config "thread" "min-sec-between-refresh"])]
+    (Thread/sleep (* wait 1000)))
+  (println "Updating" (th ::url))
+  (recur state (update-posts state th)))
