@@ -1,7 +1,9 @@
 (ns channeler.log-config
   (:require [clojure.tools.logging :as log]))
 
-(defn prop-rewrite
+(defn rewrite-unconditionally
+  "Create BiFunction for use in LogManager.updateCondiguration mapper that will always map to the
+  desired value, ignoring the new and old value."
   [desired-val]
   (reify java.util.function.BiFunction
     (apply [_ old-val new-val] desired-val)))
@@ -10,35 +12,39 @@
   (reify java.util.function.BiFunction
     (apply [_ _ new-val] new-val)))
 
-(defn logger-mapper
-  [log-path]
-  (let [simple-formatter-rewrite (prop-rewrite "java.util.logging.SimpleFormatter")
-        max-verbosity-rewrite (prop-rewrite "FINE")]
+(defn replace-mapper
+  "Make a mapper passed to java.util.logging.LogManager.updateConfiguration to apply our hardcoded
+  default config.
+
+  Note that this cannot be a function with two arguments that is partially applied because the
+  resulting partial-fn will not satisfy the appropritate interface."
+  [replacements]
   (reify java.util.function.Function
-    (apply [_ key] ; ignore this
-      ;; for the properties we care about, just overwrite their values (prop-rewrite just ignores
-      ;; the new and old value). For other properties, just accept the "new" value (with
-      ;; prop-unchanged).
-      (case key
-        "handlers" (prop-rewrite "java.util.logging.ConsoleHandler,java.util.logging.FileHandler")
-        "java.util.logging.FileHandler.pattern" (prop-rewrite log-path)
-        "java.util.logging.FileHandler.formatter" simple-formatter-rewrite
-        "java.util.logging.FileHandler.level" max-verbosity-rewrite ; most verbose in file
-        "java.util.logging.ConsoleHandler.formatter" simple-formatter-rewrite
-        "java.util.logging.ConsoleHandler.level" (prop-rewrite "INFO") ; less verbose on stderr
-        ".level" max-verbosity-rewrite ; global logger level - most verbose
-        prop-unchanged)))))
+    (apply [_ key] ; ignore "this"
+      (if (contains? replacements key)
+        (rewrite-unconditionally (replacements key))
+        prop-unchanged))))
 
 (defn configure-logging!
   "Configure logging based on (non-raw) config. Does not accept state so that logging can be set up
-  before state is constructed. This method can be called multiple times to re-configure the log path
-  - so if in the future the construction of state effects the log path, somehow."
+  before state is constructed."
   [conf]
-  (let [log-path (conf "log-path")
-        manager (java.util.logging.LogManager/getLogManager)
-        mapper (logger-mapper log-path)]
+  (let [manager (java.util.logging.LogManager/getLogManager)
+        replacements (if-let [log-path (get-in conf ["logging" "path"])]
+                       {"java.util.logging.FileHandler.pattern" log-path}
+                       {})]
+    ;; If the system property is unset, load from our default in resources, otherwise load from the
+    ;; file given in the system properties
+    ;;
     ;; use updateConfiguration instead of readConfiguration(InputStream) reading from a defaults
     ;; file in resources, since the docs say that is only for use during initialization of the
     ;; logging module, whereas this code runs later.
-    (. manager updateConfiguration mapper)
+    (if (some? (System/getProperty "java.util.logging.config.file"))
+      ;; this implicitly loads from the system property
+      (.updateConfiguration manager (replace-mapper replacements))
+      ;; construct the stream explicitly to load from resources
+      (let [prop-stream (-> "log.properties"
+                            (clojure.java.io/resource)
+                            (clojure.java.io/input-stream))]
+        (.updateConfiguration manager prop-stream (replace-mapper replacements))))
     (log/info "Logging initialized")))
