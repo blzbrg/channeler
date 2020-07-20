@@ -4,6 +4,7 @@
             [clojure.data.json :as json]
             [clojure.walk :as walk]
             [clojure.core.async :as async]
+            [clojure.tools.logging :as log]
             ))
 
 (defn ^:private new-posts
@@ -91,5 +92,5 @@
   (export-thread state th)
   (let [wait (get-in state [:channeler.state/config "thread" "min-sec-between-refresh"])]
     (Thread/sleep (* wait 1000)))
-  (println "Updating" (th ::url))
+  (log/info "Updating" (th ::url))
   (recur state (update-posts state th)))
