@@ -5,6 +5,7 @@
             [clojure.walk :as walk]
             [clojure.core.async :as async]
             [clojure.tools.logging :as log]
+            [clojure.java.io :as io]
             ))
 
 (defn ^:private new-posts
@@ -46,9 +47,10 @@
   [coll]
   (walk/prewalk #(if (map? %) (eliminate-symbol-keys %) %) coll))
 
-(defn ^:private export-path
-  [{dir ::state/dir} {posts "posts"}]
-  (format "%s/%d.json" dir ((first posts) "no")))
+(defn ^:private export-file
+  [{dir ::state/dir} {thread-id ::id}]
+  (let [fname (str thread-id ".json")]
+    (io/file dir fname)))
 
 (def ^:private write-options
   (list :escape-unicode false :escape-js-separators false
@@ -56,7 +58,7 @@
 
 (defn export-thread
   [state th]
-  (with-open [w (clojure.java.io/writer (export-path state th))]
+  (with-open [w (clojure.java.io/writer (export-file state th))]
     (apply json/write (trim-for-export th) w write-options)))
 
 (defn thread-url
@@ -68,6 +70,7 @@
   (let [url (thread-url board-name thread-id)
         _ (log/info "Initializing thread" url)
         th (-> (fetch url)
+               (assoc ::id thread-id)
                (assoc ::url url)
                (assoc ::board board-name))
         posts (process-posts state th (th "posts"))]
