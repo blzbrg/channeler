@@ -66,6 +66,7 @@
 (defn init-thread
   [state board-name thread-id]
   (let [url (thread-url board-name thread-id)
+        _ (log/info "Initializing thread" url)
         th (-> (fetch url)
                (assoc ::url url)
                (assoc ::board board-name))
