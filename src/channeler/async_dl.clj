@@ -1,6 +1,7 @@
 (ns channeler.async-dl
   (:require [clojure.java.io :as io]
-            [clojure.core.async :as async]))
+            [clojure.core.async :as async]
+            [clojure.tools.logging :as log]))
 
 (defn dl-request
   [remote local response-chan]
@@ -8,10 +9,11 @@
 
 (defn handle-request
   [[remote local response-chan]]
-  ;; TODO: handle errors
-  (with-open [in (io/input-stream remote)
-              out (io/output-stream local)]
-    (io/copy in out))
+  (log/info "Handling request for remote" remote)
+  (try (with-open [in (io/input-stream remote)
+                   out (io/output-stream local)]
+         (io/copy in out))
+       (catch Exception e (log/error "Error handling dl request" e)))
   (async/>!! response-chan [::done remote local]))
 
 (defn ^:private conf-accessor

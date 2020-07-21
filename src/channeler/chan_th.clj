@@ -4,6 +4,7 @@
             [clojure.data.json :as json]
             [clojure.walk :as walk]
             [clojure.core.async :as async]
+            [clojure.tools.logging :as log]
             ))
 
 (defn ^:private new-posts
@@ -65,6 +66,7 @@
 (defn init-thread
   [state board-name thread-id]
   (let [url (thread-url board-name thread-id)
+        _ (log/info "Initializing thread" url)
         th (-> (fetch url)
                (assoc ::url url)
                (assoc ::board board-name))
@@ -91,5 +93,5 @@
   (export-thread state th)
   (let [wait (get-in state [:channeler.state/config "thread" "min-sec-between-refresh"])]
     (Thread/sleep (* wait 1000)))
-  (println "Updating" (th ::url))
+  (log/info "Updating" (th ::url))
   (recur state (update-posts state th)))

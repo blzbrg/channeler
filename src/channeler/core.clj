@@ -5,7 +5,9 @@
             [channeler.chan-th :as chan-th]
             [channeler.config :as config]
             [channeler.async-dl :as async-dl]
-            [clojure.tools.cli :as cli]))
+            [channeler.log-config :as log-config]
+            [clojure.tools.cli :as cli]
+            [clojure.tools.logging :as log]))
 
 (defn eprintln
   [& args]
@@ -25,6 +27,7 @@
         raw-conf (config/from-file)
         conf (config/incorporate-cli-options raw-conf cli-opts)
         plugin-configs (conf "plugins")
+        _ (log-config/configure-logging! conf) ; run for side effect, want to be before state
         state (-> (state/initial-state conf)
                   (async-dl/init)
                   (plugin-loader/load-plugins plugin-configs))
