@@ -62,8 +62,8 @@
     (apply json/write (trim-for-export th) w write-options)))
 
 (defn thread-url
-  [board thread]
-  (format "https://a.4cdn.org/%s/thread/%s.json" board thread))
+  ([{id ::id board ::board}] (thread-url board id))
+  ([board id] (format "https://a.4cdn.org/%s/thread/%s.json" board id)))
 
 (defn init-thread
   [state board-name thread-id]
@@ -71,7 +71,6 @@
         _ (log/info "Initializing thread" url)
         th (-> (fetch url)
                (assoc ::id thread-id)
-               (assoc ::url url)
                (assoc ::board board-name))
         posts (process-posts state th (th "posts"))]
     (assoc th "posts" posts)))
@@ -79,13 +78,13 @@
 (defn update-posts
   "Uses side effects to update the passed thread, applying post transforms, and returns the new
   version"
-  [state {url ::url old-posts "posts" :as old-thread}]
-  (let [raw-new-posts (new-posts-from-json old-posts (fetch url))]
+  [state {old-posts "posts" :as old-thread}]
+  (let [raw-new-posts (new-posts-from-json old-posts (fetch (thread-url old-thread)))]
     (if (empty? raw-new-posts)
       ;; thread unchanged
       old-thread
       ;; process new posts
-      (->> (new-posts-from-json old-posts (fetch url))
+      (->> raw-new-posts
            (process-posts state old-thread)
            (conj old-posts)
            (assoc old-thread "posts")))))
@@ -96,5 +95,5 @@
   (export-thread state th)
   (let [wait (get-in state [:channeler.state/config "thread" "min-sec-between-refresh"])]
     (Thread/sleep (* wait 1000)))
-  (log/info "Updating" (th ::url))
+  (log/info "Updating" (thread-url th)) ; for now, just use URL to represent thread
   (recur state (update-posts state th)))
