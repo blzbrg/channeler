@@ -19,7 +19,9 @@
 
 (defn ^:private fetch
   [url]
-  (json/read (clojure.java.io/reader url)))
+  (try
+    (json/read (clojure.java.io/reader url))
+    (catch java.io.FileNotFoundException _ nil)))
 
 (defn ^:private post-routine
   [post-transcade th post]
@@ -79,15 +81,18 @@
   "Uses side effects to update the passed thread, applying post transforms, and returns the new
   version"
   [state {old-posts "posts" :as old-thread}]
-  (let [raw-new-posts (new-posts-from-json old-posts (fetch (thread-url old-thread)))]
-    (if (empty? raw-new-posts)
-      ;; thread unchanged
-      old-thread
-      ;; process new posts
-      (->> raw-new-posts
-           (process-posts state old-thread)
-           (conj old-posts)
-           (assoc old-thread "posts")))))
+  (if-let [raw-new-thread (fetch (thread-url old-thread))]
+    (let [raw-new-posts (new-posts-from-json old-posts raw-new-thread)]
+      (if (empty? raw-new-posts)
+        ;; thread unchanged
+        old-thread
+        ;; process new posts
+        (->> raw-new-posts
+             (process-posts state old-thread)
+             (conj old-posts)
+             (assoc old-thread "posts"))))
+    ;; thread has 404d
+    nil))
 
 (defn thread-loop
   "Refresh thread, infinitely, inline. Sleeps thread to wait."
@@ -96,4 +101,6 @@
   (let [wait (get-in state [:channeler.state/config "thread" "min-sec-between-refresh"])]
     (Thread/sleep (* wait 1000)))
   (log/info "Updating" (thread-url th)) ; for now, just use URL to represent thread
-  (recur state (update-posts state th)))
+  (if-let [new-th (update-posts state th)]
+    (recur state new-th)
+    (log/info "Thread is 404" (thread-url th))))
