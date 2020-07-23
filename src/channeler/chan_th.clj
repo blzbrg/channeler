@@ -17,19 +17,34 @@
   [old-posts new-thread-json]
   (new-posts old-posts (new-thread-json "posts")))
 
-(defn ^:private fetch
-  [url]
-  (let [request (-> (java.net.http.HttpRequest/newBuilder)
-                    (.GET)
-                    (.uri (new java.net.URI url))
-                    ;; TODO: send If-modified-since
-                    (.build))
-        client (java.net.http.HttpClient/newHttpClient)
-        ;; all the exceptions send throws should never happen - fail-fast if they do
-        response (.send client request (java.net.http.HttpResponse$BodyHandlers/ofString))]
-    (if (= (.statusCode response) 200)
-      (json/read-str (.body response))
+(defn ^:private get-header
+  [response header-name]
+  (let [val-opt (-> response
+                    (.headers)
+                    (.firstValue header-name))]
+    (if (.isPresent val-opt)
+      (.get val-opt)
       nil)))
+
+(defn ^:private fetch
+  ([url] (fetch url nil))
+  ([url last-modified]
+   (let [builder (java.net.http.HttpRequest/newBuilder (new java.net.URI url))
+         request (.build (if last-modified
+                           (.header builder "If-Modified-Since" last-modified)
+                           builder))
+         client (java.net.http.HttpClient/newHttpClient)
+         ;; all the exceptions send throws should never happen - fail-fast if they do
+         response (.send client request (java.net.http.HttpResponse$BodyHandlers/ofString))]
+     (case (.statusCode response)
+       200 [::fetched
+            (-> (.body response)
+                (json/read-str)
+                (assoc ::last-modified (get-header response "Last-Modified")))]
+       304 [::unmodified nil]
+       404 [::not-found nil]
+       (do (log/error "Did not understand response code" (.statusCode response))
+           [::unsupported-status nil])))))
 
 (defn ^:private post-routine
   [post-transcade th post]
@@ -75,32 +90,50 @@
   ([{id ::id board ::board}] (thread-url board id))
   ([board id] (format "https://a.4cdn.org/%s/thread/%s.json" board id)))
 
+(defn ^:private exit-with-network-error
+  [message]
+  (log/error message)
+  (System/exit 1))
+
 (defn init-thread
   [state board-name thread-id]
   (let [url (thread-url board-name thread-id)
         _ (log/info "Initializing thread" url)
-        th (-> (fetch url)
-               (assoc ::id thread-id)
-               (assoc ::board board-name))
-        posts (process-posts state th (th "posts"))]
-    (assoc th "posts" posts)))
+        [fetch-kw fetched-th] (fetch url)]
+    (case fetch-kw
+      ::fetched (let [th (-> fetched-th
+                             (assoc ::id thread-id)
+                             (assoc ::board board-name))
+                      posts (process-posts state th (th "posts"))]
+                  (log/debug "init th" (dissoc th "posts"))
+                  (assoc th "posts" posts))
+      ::unsupported-status (exit-with-network-error "Exiting due to unsupported status when"
+                                                    "initializing.")
+      ::unmodified (exit-with-network-error "Nonsensical cache response: got 304 unmodified when we"
+                                            "didn't send If-Modified-Since")
+      ::not-found (exit-with-network-error "Got 404 not found when first starting a thread!"))))
 
 (defn update-posts
   "Uses side effects to update the passed thread, applying post transforms, and returns the new
   version"
   [state {old-posts "posts" :as old-thread}]
-  (if-let [raw-new-thread (fetch (thread-url old-thread))]
-    (let [raw-new-posts (new-posts-from-json old-posts raw-new-thread)]
-      (if (empty? raw-new-posts)
-        ;; thread unchanged
-        old-thread
-        ;; process new posts
-        (->> raw-new-posts
-             (process-posts state old-thread)
-             (conj old-posts)
-             (assoc old-thread "posts"))))
-    ;; thread has 404d
-    nil))
+  (let [[fetch-kw fetched-th] (fetch (thread-url old-thread) (old-thread ::last-modified))]
+    (case fetch-kw
+      ::fetched (let [raw-new-posts (new-posts-from-json old-posts fetched-th)]
+                  (if (empty? raw-new-posts)
+                    ;; thread unchanged
+                    old-thread
+                    ;; process new posts
+                    (->> raw-new-posts
+                         (process-posts state old-thread)
+                         (conj old-posts)
+                         (assoc old-thread "posts"))))
+      ::unsupported-status old-thread ; unsupported HTTP status, might as well treat as unchanged
+      ;; unchanged since last one
+      ::unmodified (do (log/info "Thread unchanged since" (old-thread ::last-modified))
+                       old-thread)
+      ::not-found nil))) ; thread has 404d
+
 
 (defn thread-loop
   "Refresh thread, infinitely, inline. Sleeps thread to wait."
