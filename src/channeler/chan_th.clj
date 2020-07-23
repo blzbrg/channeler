@@ -19,9 +19,17 @@
 
 (defn ^:private fetch
   [url]
-  (try
-    (json/read (clojure.java.io/reader url))
-    (catch java.io.FileNotFoundException _ nil)))
+  (let [request (-> (java.net.http.HttpRequest/newBuilder)
+                    (.GET)
+                    (.uri (new java.net.URI url))
+                    ;; TODO: send If-modified-since
+                    (.build))
+        client (java.net.http.HttpClient/newHttpClient)
+        ;; all the exceptions send throws should never happen - fail-fast if they do
+        response (.send client request (java.net.http.HttpResponse$BodyHandlers/ofString))]
+    (if (= (.statusCode response) 200)
+      (json/read-str (.body response))
+      nil)))
 
 (defn ^:private post-routine
   [post-transcade th post]
