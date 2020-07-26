@@ -5,6 +5,7 @@
             [clojure.walk :as walk]
             [clojure.core.async :as async]
             [clojure.tools.logging :as log]
+            [clojure.java.io :as io]
             ))
 
 (defn ^:private new-posts
@@ -16,9 +17,34 @@
   [old-posts new-thread-json]
   (new-posts old-posts (new-thread-json "posts")))
 
+(defn ^:private get-header
+  [response header-name]
+  (let [val-opt (-> response
+                    (.headers)
+                    (.firstValue header-name))]
+    (if (.isPresent val-opt)
+      (.get val-opt)
+      nil)))
+
 (defn ^:private fetch
-  [url]
-  (json/read (clojure.java.io/reader url)))
+  ([url] (fetch url nil))
+  ([url last-modified]
+   (let [builder (java.net.http.HttpRequest/newBuilder (new java.net.URI url))
+         request (.build (if last-modified
+                           (.header builder "If-Modified-Since" last-modified)
+                           builder))
+         client (java.net.http.HttpClient/newHttpClient)
+         ;; all the exceptions send throws should never happen - fail-fast if they do
+         response (.send client request (java.net.http.HttpResponse$BodyHandlers/ofString))]
+     (case (.statusCode response)
+       200 [::fetched
+            (-> (.body response)
+                (json/read-str)
+                (assoc ::last-modified (get-header response "Last-Modified")))]
+       304 [::unmodified nil]
+       404 [::not-found nil]
+       (do (log/error "Did not understand response code" (.statusCode response))
+           [::unsupported-status nil])))))
 
 (defn ^:private post-routine
   [post-transcade th post]
@@ -46,9 +72,10 @@
   [coll]
   (walk/prewalk #(if (map? %) (eliminate-symbol-keys %) %) coll))
 
-(defn ^:private export-path
-  [{dir ::state/dir} {posts "posts"}]
-  (format "%s/%d.json" dir ((first posts) "no")))
+(defn ^:private export-file
+  [{dir ::state/dir} {thread-id ::id}]
+  (let [fname (str thread-id ".json")]
+    (io/file dir fname)))
 
 (def ^:private write-options
   (list :escape-unicode false :escape-js-separators false
@@ -56,36 +83,57 @@
 
 (defn export-thread
   [state th]
-  (with-open [w (clojure.java.io/writer (export-path state th))]
+  (with-open [w (clojure.java.io/writer (export-file state th))]
     (apply json/write (trim-for-export th) w write-options)))
 
 (defn thread-url
-  [board thread]
-  (format "https://a.4cdn.org/%s/thread/%s.json" board thread))
+  ([{id ::id board ::board}] (thread-url board id))
+  ([board id] (format "https://a.4cdn.org/%s/thread/%s.json" board id)))
+
+(defn ^:private exit-with-network-error
+  [message]
+  (log/error message)
+  (System/exit 1))
 
 (defn init-thread
   [state board-name thread-id]
   (let [url (thread-url board-name thread-id)
         _ (log/info "Initializing thread" url)
-        th (-> (fetch url)
-               (assoc ::url url)
-               (assoc ::board board-name))
-        posts (process-posts state th (th "posts"))]
-    (assoc th "posts" posts)))
+        [fetch-kw fetched-th] (fetch url)]
+    (case fetch-kw
+      ::fetched (let [th (-> fetched-th
+                             (assoc ::id thread-id)
+                             (assoc ::board board-name))
+                      posts (process-posts state th (th "posts"))]
+                  (log/debug "init th" (dissoc th "posts"))
+                  (assoc th "posts" posts))
+      ::unsupported-status (exit-with-network-error "Exiting due to unsupported status when"
+                                                    "initializing.")
+      ::unmodified (exit-with-network-error "Nonsensical cache response: got 304 unmodified when we"
+                                            "didn't send If-Modified-Since")
+      ::not-found (exit-with-network-error "Got 404 not found when first starting a thread!"))))
 
 (defn update-posts
   "Uses side effects to update the passed thread, applying post transforms, and returns the new
   version"
-  [state {url ::url old-posts "posts" :as old-thread}]
-  (let [raw-new-posts (new-posts-from-json old-posts (fetch url))]
-    (if (empty? raw-new-posts)
-      ;; thread unchanged
-      old-thread
-      ;; process new posts
-      (->> (new-posts-from-json old-posts (fetch url))
-           (process-posts state old-thread)
-           (conj old-posts)
-           (assoc old-thread "posts")))))
+  [state {old-posts "posts" :as old-thread}]
+  (let [[fetch-kw fetched-th] (fetch (thread-url old-thread) (old-thread ::last-modified))]
+    (case fetch-kw
+      ::fetched (let [raw-new-posts (new-posts-from-json old-posts fetched-th)]
+                  (if (empty? raw-new-posts)
+                    ;; thread unchanged
+                    old-thread
+                    ;; process new posts
+                    (->> raw-new-posts
+                         (process-posts state old-thread)
+                         (conj old-posts)
+                         (assoc old-thread "posts"))))
+      ::unsupported-status old-thread ; unsupported HTTP status, might as well treat as unchanged
+      ;; unchanged since last one
+      ::unmodified (do (log/info "Thread unchanged since" (old-thread ::last-modified))
+                       old-thread)
+      ::not-found nil))) ; thread has 404d
+
 
 (defn thread-loop
   "Refresh thread, infinitely, inline. Sleeps thread to wait."
@@ -93,5 +141,7 @@
   (export-thread state th)
   (let [wait (get-in state [:channeler.state/config "thread" "min-sec-between-refresh"])]
     (Thread/sleep (* wait 1000)))
-  (log/info "Updating" (th ::url))
-  (recur state (update-posts state th)))
+  (log/info "Updating" (thread-url th)) ; for now, just use URL to represent thread
+  (if-let [new-th (update-posts state th)]
+    (recur state new-th)
+    (log/info "Thread is 404" (thread-url th))))
