@@ -52,7 +52,7 @@
       (finish-dl this ctx post))))
 
 (defn plugin-main
-  [state _]  ; ignore plug conf for now
-  (let [post-transform (->ImageDownload (state :channeler.state/dir)
-                                        (state :channeler.state/async-dl-chan))]
+  [context _]  ; ignore plug conf for now
+  (let [post-transform (->ImageDownload (get-in context [:conf "dir"])
+                                        (get-in context [:state :channeler.state/async-dl-chan]))]
     (plugin/register-post-transform post-transform)))

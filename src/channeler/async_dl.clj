@@ -17,8 +17,8 @@
   (async/>!! response-chan [::done remote local]))
 
 (defn ^:private conf-accessor
-  [state & keys]
-  (get-in state (concat [:channeler.state/config "async-dl"] keys)))
+  [context & keys]
+  (get-in context (concat ["async-dl"] keys)))
 
 (defn download-loop
   [pull-chan interval-sec]
@@ -44,17 +44,18 @@
   (async/chan 50))
 
 (defn init
-  [state]
-  (let [interval-sec (conf-accessor state "min-sec-between-downloads")
+  [context]
+  (let [interval-sec (get-in context [:conf "async-dl" "min-sec-between-downloads"])
         chan (make-request-chan)
         ;; spawn thread - no need to keep reference to the future, we will never look at the result.
         _ (future (download-loop chan interval-sec))]
-    (assoc state :channeler.state/async-dl-chan chan)))
+    (log/debug "Interval is" interval-sec)
+    (assoc (context :state) :channeler.state/async-dl-chan chan)))
 
 (defn deinit
   "End the state and asynchronous jobs created during init. Shoudld be called when the application
   itends to do an orderly shutdown."
-  [{chan :channeler.state/async-dl-chan}]
+  [context]
   ;; closing the channel will cause the download-loop to exit and the thread to end. Returning from
   ;; the main thread won't kill this thread!
-  (async/close! chan))
+  (async/close! (get-in context [:state :channeler.state/async-dl-chan])))
