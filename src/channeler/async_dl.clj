@@ -50,7 +50,7 @@
         ;; spawn thread - no need to keep reference to the future, we will never look at the result.
         _ (future (download-loop chan interval-sec))]
     (log/debug "Interval is" interval-sec)
-    (assoc (context :state) :channeler.state/async-dl-chan chan)))
+    (assoc (context :state) ::async-dl-chan chan)))
 
 (defn deinit
   "End the state and asynchronous jobs created during init. Shoudld be called when the application
@@ -58,4 +58,4 @@
   [context]
   ;; closing the channel will cause the download-loop to exit and the thread to end. Returning from
   ;; the main thread won't kill this thread!
-  (async/close! (get-in context [:state :channeler.state/async-dl-chan])))
+  (async/close! (get-in context [:state ::async-dl-chan])))

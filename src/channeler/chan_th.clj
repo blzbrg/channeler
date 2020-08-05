@@ -1,6 +1,5 @@
 (ns channeler.chan-th
   (:require [channeler.transcade :as transcade]
-            [channeler.state :as state]
             [clojure.data.json :as json]
             [clojure.walk :as walk]
             [clojure.core.async :as async]

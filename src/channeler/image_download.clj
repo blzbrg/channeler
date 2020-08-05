@@ -54,5 +54,5 @@
 (defn plugin-main
   [context _]  ; ignore plug conf for now
   (let [post-transform (->ImageDownload (get-in context [:conf "dir"])
-                                        (get-in context [:state :channeler.state/async-dl-chan]))]
+                                        (get-in context [:state ::async-dl/async-dl-chan]))]
     (plugin/register-post-transform post-transform)))
