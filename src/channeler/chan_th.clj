@@ -1,5 +1,6 @@
 (ns channeler.chan-th
   (:require [channeler.transcade :as transcade]
+            [channeler.config :refer [conf-get]]
             [clojure.data.json :as json]
             [clojure.walk :as walk]
             [clojure.core.async :as async]
@@ -138,7 +139,7 @@
   "Refresh thread, infinitely, inline. Sleeps thread to wait."
   [context th]
   (export-thread context th)
-  (let [wait (get-in context [:conf "thread" "min-sec-between-refresh"])]
+  (let [wait (conf-get (:conf context) "thread" "min-sec-between-refresh")]
     (Thread/sleep (* wait 1000)))
   (log/info "Updating" (thread-url th)) ; for now, just use URL to represent thread
   (if-let [new-th (update-posts context th)]

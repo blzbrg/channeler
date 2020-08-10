@@ -2,6 +2,7 @@
   (:require [channeler.plugin :as plugin]
             [channeler.transcade :as transcade]
             [channeler.async-dl :as async-dl]
+            [channeler.config :refer [conf-get]]
             [clojure.core.async :as async]))
 
 (defn ^:private image-url
@@ -53,6 +54,6 @@
 
 (defn plugin-main
   [context _]  ; ignore plug conf for now
-  (let [post-transform (->ImageDownload (get-in context [:conf "dir"])
+  (let [post-transform (->ImageDownload (conf-get (:conf context) "dir")
                                         (get-in context [:state ::async-dl/async-dl-chan]))]
     (plugin/register-post-transform post-transform)))

@@ -1,5 +1,6 @@
 (ns channeler.async-dl
-  (:require [clojure.java.io :as io]
+  (:require [channeler.config :refer [conf-get]]
+            [clojure.java.io :as io]
             [clojure.core.async :as async]
             [clojure.tools.logging :as log]))
 
@@ -15,10 +16,6 @@
          (io/copy in out))
        (catch Exception e (log/error "Error handling dl request" e)))
   (async/>!! response-chan [::done remote local]))
-
-(defn ^:private conf-accessor
-  [context & keys]
-  (get-in context (concat ["async-dl"] keys)))
 
 (defn download-loop
   [pull-chan interval-sec]
@@ -45,7 +42,7 @@
 
 (defn init
   [context]
-  (let [interval-sec (get-in context [:conf "async-dl" "min-sec-between-downloads"])
+  (let [interval-sec (conf-get (:conf context) "async-dl" "min-sec-between-downloads")
         chan (make-request-chan)
         ;; spawn thread - no need to keep reference to the future, we will never look at the result.
         _ (future (download-loop chan interval-sec))]

@@ -1,6 +1,6 @@
 (ns channeler.plugin-loader
   (:require [channeler.plugin :as plugin]
-            ))
+            [channeler.config :refer [conf-get]]))
 
 (defn ^:private init-clj-plugin!
   "Given the fully-qualified namespace for a plugin that can be found on
@@ -14,7 +14,7 @@
 (defn ^:private init-plugins!
   "Switch over plugin types - use the appropriate init fn for each."
   [context]
-  (doseq [[name plug-conf] (get-in context [:conf "plugins"])]
+  (doseq [[name plug-conf] (conf-get (:conf context) "plugins")]
     (case (plug-conf "type")
       "clojure-ns" (init-clj-plugin! context name plug-conf))))
 
