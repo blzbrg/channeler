@@ -74,3 +74,22 @@
   ([] (if-let [path (first-usable-file (default-paths))]
         (load-from-path path)
         default-conf)))
+
+(defn conf-get
+  "Try the sequence of configs looking for one that contains a value at the \"path\" described by
+  keys. Each key in the \"path\" is a key into a map, matching the semantics of get-in."
+  [config & keys]
+  (if (map? config)
+    ;; if there is just one config, get from it directly
+    (get-in config keys)
+    ;; if there is a sequence of configs, look through them for one that contains it
+    (loop [[individual-conf & rest] config]
+      ;; if this item in the conf sequence is not a map, assume it can be derefed. This allows
+      ;; multiple threads to share a global config easily through an atom.
+      (let [eff-conf (if (map? individual-conf) individual-conf @individual-conf)]
+        (let [val (get-in eff-conf keys)]
+          (if (nil? val)
+            (if (some? rest)
+              (recur rest) ; if it's missing, keep looping
+              nil) ;; if no more confs left, terminate with unfound
+            val)))))) ; if it's present, terminate with the value
