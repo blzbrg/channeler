@@ -1,6 +1,6 @@
 (ns channeler.chan-th
   (:require [channeler.transcade :as transcade]
-            [channeler.state :as state]
+            [channeler.config :refer [conf-get]]
             [clojure.data.json :as json]
             [clojure.walk :as walk]
             [clojure.core.async :as async]
@@ -53,7 +53,7 @@
 (defn ^:private process-posts
   "Take posts in json format and process them into our format, by using
   the post-transcade"
-  [{post-transcade :post-transcade} th json-posts]
+  [{{post-transcade :post-transcade} :state} th json-posts]
   (->> json-posts
        ;; channel for each post (fed by coroutine)
        (map (partial post-routine post-transcade th))
@@ -73,7 +73,7 @@
   (walk/prewalk #(if (map? %) (eliminate-symbol-keys %) %) coll))
 
 (defn ^:private export-file
-  [{dir ::state/dir} {thread-id ::id}]
+  [{{dir "dir"} :conf} {thread-id ::id}]
   (let [fname (str thread-id ".json")]
     (io/file dir fname)))
 
@@ -82,8 +82,8 @@
         :escape-slash false))
 
 (defn export-thread
-  [state th]
-  (with-open [w (clojure.java.io/writer (export-file state th))]
+  [context th]
+  (with-open [w (clojure.java.io/writer (export-file context th))]
     (apply json/write (trim-for-export th) w write-options)))
 
 (defn thread-url
@@ -96,7 +96,7 @@
   (System/exit 1))
 
 (defn init-thread
-  [state board-name thread-id]
+  [context board-name thread-id]
   (let [url (thread-url board-name thread-id)
         _ (log/info "Initializing thread" url)
         [fetch-kw fetched-th] (fetch url)]
@@ -104,7 +104,7 @@
       ::fetched (let [th (-> fetched-th
                              (assoc ::id thread-id)
                              (assoc ::board board-name))
-                      posts (process-posts state th (th "posts"))]
+                      posts (process-posts context th (th "posts"))]
                   (log/debug "init th" (dissoc th "posts"))
                   (assoc th "posts" posts))
       ::unsupported-status (exit-with-network-error "Exiting due to unsupported status when"
@@ -116,7 +116,7 @@
 (defn update-posts
   "Uses side effects to update the passed thread, applying post transforms, and returns the new
   version"
-  [state {old-posts "posts" :as old-thread}]
+  [context {old-posts "posts" :as old-thread}]
   (let [[fetch-kw fetched-th] (fetch (thread-url old-thread) (old-thread ::last-modified))]
     (case fetch-kw
       ::fetched (let [raw-new-posts (new-posts-from-json old-posts fetched-th)]
@@ -125,7 +125,7 @@
                     old-thread
                     ;; process new posts
                     (->> raw-new-posts
-                         (process-posts state old-thread)
+                         (process-posts context old-thread)
                          (conj old-posts)
                          (assoc old-thread "posts"))))
       ::unsupported-status old-thread ; unsupported HTTP status, might as well treat as unchanged
@@ -137,11 +137,11 @@
 
 (defn thread-loop
   "Refresh thread, infinitely, inline. Sleeps thread to wait."
-  [state th]
-  (export-thread state th)
-  (let [wait (get-in state [:channeler.state/config "thread" "min-sec-between-refresh"])]
+  [context th]
+  (export-thread context th)
+  (let [wait (conf-get (:conf context) "thread" "min-sec-between-refresh")]
     (Thread/sleep (* wait 1000)))
   (log/info "Updating" (thread-url th)) ; for now, just use URL to represent thread
-  (if-let [new-th (update-posts state th)]
-    (recur state new-th)
+  (if-let [new-th (update-posts context th)]
+    (recur context new-th)
     (log/info "Thread is 404" (thread-url th))))

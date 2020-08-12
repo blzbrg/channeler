@@ -1,22 +1,22 @@
 (ns channeler.plugin-loader
   (:require [channeler.plugin :as plugin]
-            ))
+            [channeler.config :refer [conf-get]]))
 
 (defn ^:private init-clj-plugin!
   "Given the fully-qualified namespace for a plugin that can be found on
   the classpath, and a config, load that plugin. For example, if
   \"foo.bar\" is passed, will call (foo.bar/plugin-main)"
-  [state ns-str plug-conf]
+  [context ns-str plug-conf]
   (require (symbol ns-str))
   (let [fun (resolve (symbol ns-str "plugin-main"))]
-    (fun state plug-conf)))
+    (fun context plug-conf)))
 
 (defn ^:private init-plugins!
   "Switch over plugin types - use the appropriate init fn for each."
-  [state plugin-configs]
-  (doseq [[name conf] plugin-configs]
-    (case (conf "type")
-      "clojure-ns" (init-clj-plugin! state name conf))))
+  [context]
+  (doseq [[name plug-conf] (conf-get (:conf context) "plugins")]
+    (case (plug-conf "type")
+      "clojure-ns" (init-clj-plugin! context name plug-conf))))
 
 (defn ^:private put-transcades-into-state
   [state plugin-reg]
@@ -27,6 +27,6 @@
   (put-transcades-into-state state plugin-reg))
 
 (defn load-plugins
-  [state plugin-configs]
-  (init-plugins! state plugin-configs)
-  (plugin-into-state state @plugin/reg-state))
+  [context]
+  (init-plugins! context)
+  (plugin-into-state (context :state) @plugin/reg-state))
