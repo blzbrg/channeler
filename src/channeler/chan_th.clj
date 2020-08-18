@@ -102,8 +102,10 @@
         [fetch-kw fetched-th] (fetch url)]
     (case fetch-kw
       ::fetched (let [th (-> fetched-th
-                             (assoc ::id thread-id)
-                             (assoc ::board board-name))
+                             (assoc ::id thread-id
+                                    ::board board-name
+                                    ::conf (:conf context)
+                                    ::state (:state context)))
                       posts (process-posts context th (th "posts"))]
                   (log/debug "init th" (dissoc th "posts"))
                   (assoc th "posts" posts))
