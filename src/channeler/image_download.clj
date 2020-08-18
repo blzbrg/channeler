@@ -20,10 +20,10 @@
        (not (contains? post ::dl-chan))))
 
 (defn ^:private init-dl
-  [{dir :dir dl-chan :dl-chan} {board :channeler.chan-th/board} post]
+  [{dl-chan :dl-chan} {board :channeler.chan-th/board conf :channeler.chan-th/conf} post]
   (let [web-filename (clojure.string/join (list (post "tim") (post "ext")))
         url (image-url board (post "tim") (post "ext"))
-        local (clojure.java.io/file dir web-filename)
+        local (clojure.java.io/file (conf-get conf "dir") web-filename)
         resp-chan (async-dl/make-response-chan)]
     (async/put! dl-chan (async-dl/dl-request url local resp-chan))
     (-> post
@@ -44,7 +44,7 @@
       ;; async-dl tells us something else (TODO)
       new-post)))
 
-(defrecord ImageDownload [dir dl-chan]
+(defrecord ImageDownload [dl-chan]
   transcade/Transformer
   (applicable? [_ _ post] (or (pre-dl? post) (dl-done? post)))
   (transform [this ctx post]
@@ -54,6 +54,5 @@
 
 (defn plugin-main
   [context _]  ; ignore plug conf for now
-  (let [post-transform (->ImageDownload (conf-get (:conf context) "dir")
-                                        (get-in context [:state ::async-dl/async-dl-chan]))]
+  (let [post-transform (->ImageDownload (get-in context [:state ::async-dl/async-dl-chan]))]
     (plugin/register-post-transform post-transform)))
