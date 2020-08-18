@@ -104,7 +104,8 @@
       ::fetched (let [th (-> fetched-th
                              (assoc ::id thread-id)
                              (assoc ::board board-name)
-                             (assoc ::conf (:conf context)))
+                             (assoc ::conf (:conf context))
+                             (assoc ::state (:state context)))
                       posts (process-posts context th (th "posts"))]
                   (log/debug "init th" (dissoc th "posts"))
                   (assoc th "posts" posts))
