@@ -99,7 +99,15 @@
 
 (defn ^:private wait-time
   [context th]
-  (sec->ms (conf-get (:conf context) "thread" "min-sec-between-refresh")))
+  (let [base-wait-sec (conf-get (:conf context) "thread" "min-sec-between-refresh")
+        ;; if missing (eg. after first fetch) consider it 0
+        unmodifieds (get th ::sequential-unmodified-fetches 0)
+        ;; seconds = base-wait-sec * (2 ^ unmodifieds)
+        ;;
+        ;; When unmodifids is 0 this equals base-wait-sec.
+        wait-sec (* base-wait-sec (Math/pow 2 unmodifieds))]
+    (log/debug "Thread" (thread-url th) "waiting for" wait-sec)
+    (sec->ms wait-sec)))
 
 (defn init-thread
   [context board-name thread-id]
@@ -132,14 +140,15 @@
                     ;; thread unchanged
                     old-thread
                     ;; process new posts
-                    (->> raw-new-posts
-                         (process-posts context old-thread)
-                         (conj old-posts)
-                         (assoc old-thread "posts"))))
+                    (assoc old-thread
+                           "posts" (->> raw-new-posts
+                                        (process-posts context old-thread)
+                                        (conj old-posts))
+                           ::sequential-unmodified-fetches 0)))
       ::unsupported-status old-thread ; unsupported HTTP status, might as well treat as unchanged
       ;; unchanged since last one
       ::unmodified (do (log/info "Thread unchanged since" (old-thread ::last-modified))
-                       old-thread)
+                       (update old-thread ::sequential-unmodified-fetches (fnil inc 0)))
       ::not-found nil))) ; thread has 404d
 
 
