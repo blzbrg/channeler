@@ -105,9 +105,12 @@
         ;; seconds = base-wait-sec * (2 ^ unmodifieds)
         ;;
         ;; When unmodifids is 0 this equals base-wait-sec.
-        wait-sec (* base-wait-sec (Math/pow 2 unmodifieds))]
-    (log/debug "Thread" (thread-url th) "waiting for" wait-sec)
-    (sec->ms wait-sec)))
+        computed-sec (* base-wait-sec (Math/pow 2 unmodifieds))
+        max-sec (conf-get (:conf context)
+                          "thread" "no-new-posts-refresh-backoff" "max-sec-between-refresh")
+        trimmed-sec (min computed-sec max-sec)]
+    (log/debug "Thread" (thread-url th) "waiting for" trimmed-sec)
+    (sec->ms trimmed-sec)))
 
 (defn ^:private mark-unmodified
   "Increment number of times thread was unmodified. If there is no count (effectively 0), this sets it
