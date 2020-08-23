@@ -109,6 +109,12 @@
     (log/debug "Thread" (thread-url th) "waiting for" wait-sec)
     (sec->ms wait-sec)))
 
+(defn ^:private mark-unmodified
+  "Increment number of times thread was unmodified. If there is no count (effectively 0), this sets it
+  to 1."
+  [th]
+  (update th ::sequential-unmodified-fetches (fnil inc 0)))
+
 (defn init-thread
   [context board-name thread-id]
   (let [url (thread-url board-name thread-id)
@@ -138,7 +144,7 @@
       ::fetched (let [raw-new-posts (new-posts-from-json old-posts fetched-th)]
                   (if (empty? raw-new-posts)
                     ;; thread unchanged
-                    old-thread
+                    (mark-unmodified old-thread)
                     ;; process new posts
                     (assoc old-thread
                            "posts" (->> raw-new-posts
@@ -148,7 +154,7 @@
       ::unsupported-status old-thread ; unsupported HTTP status, might as well treat as unchanged
       ;; unchanged since last one
       ::unmodified (do (log/info "Thread unchanged since" (old-thread ::last-modified))
-                       (update old-thread ::sequential-unmodified-fetches (fnil inc 0)))
+                       (mark-unmodified old-thread))
       ::not-found nil))) ; thread has 404d
 
 
