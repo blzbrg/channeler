@@ -95,6 +95,12 @@
   (log/error message)
   (System/exit 1))
 
+(defn sec->ms [sec] (* 1000 sec))
+
+(defn ^:private wait-time
+  [context th]
+  (sec->ms (conf-get (:conf context) "thread" "min-sec-between-refresh")))
+
 (defn init-thread
   [context board-name thread-id]
   (let [url (thread-url board-name thread-id)
@@ -141,8 +147,7 @@
   "Refresh thread, infinitely, inline. Sleeps thread to wait."
   [context th]
   (export-thread context th)
-  (let [wait (conf-get (:conf context) "thread" "min-sec-between-refresh")]
-    (Thread/sleep (* wait 1000)))
+  (Thread/sleep (wait-time context th))
   (log/info "Updating" (thread-url th)) ; for now, just use URL to represent thread
   (if-let [new-th (update-posts context th)]
     (recur context new-th)
