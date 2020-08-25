@@ -95,6 +95,37 @@
   (log/error message)
   (System/exit 1))
 
+(defn sec->ms [sec] (* 1000 sec))
+
+(defn ^:private exponential-backoff-wait-time
+  [conf th base-wait-sec]
+  (let [;; if missing (eg. after first fetch) consider it 0
+        unmodifieds (get th ::sequential-unmodified-fetches 0)
+        ;; seconds = base-wait-sec * (2 ^ unmodifieds)
+        ;;
+        ;; When unmodifids is 0 this equals base-wait-sec.
+        computed-sec (* base-wait-sec (Math/pow 2 unmodifieds))
+        max-sec (conf-get conf
+                          "thread" "no-new-posts-refresh-backoff" "max-sec-between-refresh")]
+    (min computed-sec max-sec)))
+
+(defn ^:private wait-time
+  [context th]
+  (let [conf (:conf context)
+        base-wait-sec (conf-get conf "thread" "min-sec-between-refresh")
+        strategy (conf-get conf "thread" "no-new-posts-refresh-backoff" "backoff-strategy")
+        sec (if (= "exponential" strategy)
+              (exponential-backoff-wait-time conf th base-wait-sec)
+              base-wait-sec)]
+    (log/debug "Thread" (thread-url th) "waiting for" sec)
+    (sec->ms sec)))
+
+(defn ^:private mark-unmodified
+  "Increment number of times thread was unmodified. If there is no count (effectively 0), this sets it
+  to 1."
+  [th]
+  (update th ::sequential-unmodified-fetches (fnil inc 0)))
+
 (defn init-thread
   [context board-name thread-id]
   (let [url (thread-url board-name thread-id)
@@ -124,16 +155,17 @@
       ::fetched (let [raw-new-posts (new-posts-from-json old-posts fetched-th)]
                   (if (empty? raw-new-posts)
                     ;; thread unchanged
-                    old-thread
+                    (mark-unmodified old-thread)
                     ;; process new posts
-                    (->> raw-new-posts
-                         (process-posts context old-thread)
-                         (conj old-posts)
-                         (assoc old-thread "posts"))))
+                    (assoc old-thread
+                           "posts" (->> raw-new-posts
+                                        (process-posts context old-thread)
+                                        (conj old-posts))
+                           ::sequential-unmodified-fetches 0)))
       ::unsupported-status old-thread ; unsupported HTTP status, might as well treat as unchanged
       ;; unchanged since last one
       ::unmodified (do (log/info "Thread unchanged since" (old-thread ::last-modified))
-                       old-thread)
+                       (mark-unmodified old-thread))
       ::not-found nil))) ; thread has 404d
 
 
@@ -141,8 +173,7 @@
   "Refresh thread, infinitely, inline. Sleeps thread to wait."
   [context th]
   (export-thread context th)
-  (let [wait (conf-get (:conf context) "thread" "min-sec-between-refresh")]
-    (Thread/sleep (* wait 1000)))
+  (Thread/sleep (wait-time context th))
   (log/info "Updating" (thread-url th)) ; for now, just use URL to represent thread
   (if-let [new-th (update-posts context th)]
     (recur context new-th)
