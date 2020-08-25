@@ -113,7 +113,10 @@
   [context th]
   (let [conf (:conf context)
         base-wait-sec (conf-get conf "thread" "min-sec-between-refresh")
-        sec (exponential-backoff-wait-time conf th base-wait-sec)]
+        strategy (conf-get conf "thread" "no-new-posts-refresh-backoff" "backoff-strategy")
+        sec (if (= "exponential" strategy)
+              (exponential-backoff-wait-time conf th base-wait-sec)
+              base-wait-sec)]
     (log/debug "Thread" (thread-url th) "waiting for" sec)
     (sec->ms sec)))
 
