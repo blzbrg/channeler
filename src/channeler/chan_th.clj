@@ -97,20 +97,25 @@
 
 (defn sec->ms [sec] (* 1000 sec))
 
-(defn ^:private wait-time
-  [context th]
-  (let [base-wait-sec (conf-get (:conf context) "thread" "min-sec-between-refresh")
-        ;; if missing (eg. after first fetch) consider it 0
+(defn ^:private exponential-backoff-wait-time
+  [conf th base-wait-sec]
+  (let [;; if missing (eg. after first fetch) consider it 0
         unmodifieds (get th ::sequential-unmodified-fetches 0)
         ;; seconds = base-wait-sec * (2 ^ unmodifieds)
         ;;
         ;; When unmodifids is 0 this equals base-wait-sec.
         computed-sec (* base-wait-sec (Math/pow 2 unmodifieds))
-        max-sec (conf-get (:conf context)
-                          "thread" "no-new-posts-refresh-backoff" "max-sec-between-refresh")
-        trimmed-sec (min computed-sec max-sec)]
-    (log/debug "Thread" (thread-url th) "waiting for" trimmed-sec)
-    (sec->ms trimmed-sec)))
+        max-sec (conf-get conf
+                          "thread" "no-new-posts-refresh-backoff" "max-sec-between-refresh")]
+    (min computed-sec max-sec)))
+
+(defn ^:private wait-time
+  [context th]
+  (let [conf (:conf context)
+        base-wait-sec (conf-get conf "thread" "min-sec-between-refresh")
+        sec (exponential-backoff-wait-time conf th base-wait-sec)]
+    (log/debug "Thread" (thread-url th) "waiting for" sec)
+    (sec->ms sec)))
 
 (defn ^:private mark-unmodified
   "Increment number of times thread was unmodified. If there is no count (effectively 0), this sets it
