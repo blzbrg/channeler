@@ -28,11 +28,13 @@
 
 (defn ^:private first-usable-file
   "Return the first file in a seq that exists on the filesystem, or nil if none do."
-  [[head & tail]]
-  (let [f (io/as-file head)]
+  [path-seq]
+  (let [f (io/as-file (first path-seq))]
     (if (.exists f)
       f
-      (if tail (recur tail) nil)))) ; tail will be nil when we get to the end
+      (if-let [tail (next path-seq)]
+        (recur tail)
+        nil))))
 
 (defn ^:private json-wrapper
   [read-fn input & args]
