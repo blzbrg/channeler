@@ -18,9 +18,12 @@
                          (default-paths 1))))
          ;; use ~/.config/ when $XDG_CONFIG_HOME is unset. This complies with
          ;; https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html#referencing
-         1 (lazy-seq (list (io/file (System/getProperty "user.home") ".config" "channeler" "config.json")))
+         1 (lazy-seq (cons (io/file (System/getProperty "user.home")
+                                    ".config" "channeler" "config.json")
+                           (default-paths 2)))
          ;; failing that, try ~/channeler/config.json
-         2 (lazy-seq (list (io/file (System/getProperty "user.home") "channeler" "config.json"))))))
+         2 (lazy-seq (cons (io/file (System/getProperty "user.home") "channeler" "config.json")
+                           nil)))))
 
 
 (defn ^:private first-usable-file
