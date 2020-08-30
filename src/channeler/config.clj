@@ -41,10 +41,6 @@
   (try (apply read-fn input (list* :eof-error? false :eof-value nil args))
        (catch Exception e nil)))
 
-(defn ^:private load-from-path
-  [path]
-  (json/read (io/reader path)))
-
 (def default-conf
   {"plugins" {"channeler.image-download" {"type" "clojure-ns"}}
    "async-dl" {"min-sec-between-downloads" 1}
@@ -76,11 +72,12 @@
 
 (defn from-file
   "Load a config, either from a provided path, or from the default locations (documented in
-  default-paths)."
-  ([path-on-cmdline] (load-from-path path-on-cmdline))
-  ([] (if-let [path (first-usable-file (default-paths))]
-        (load-from-path path)
-        default-conf)))
+  default-paths). If path is nil, just use the default conf."
+  ([] (from-file (first-usable-file (default-paths))))
+  ([path] (let [eff-loaded (if (some? path)
+                             (json/read (io/reader path))
+                             {})]
+            (merge-json-vals default-conf eff-loaded))))
 
 (defn conf-get
   "Try the sequence of configs looking for one that contains a value at the \"path\" described by
