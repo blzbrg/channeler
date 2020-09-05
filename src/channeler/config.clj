@@ -51,6 +51,7 @@
 (def override-options
   [["-m" "--mergeOpts JSON" "JSON structure to merge with the config loaded from files"
     :id :merge-opts
+    :default {}
     :parse-fn (partial json-wrapper json/read-str)
     :validate [#(map? %) "Must parse to a valid JSON map"]]])
 
