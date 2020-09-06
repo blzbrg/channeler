@@ -36,9 +36,9 @@
         (recur tail)
         nil))))
 
-(defn ^:private json-wrapper
-  [read-fn input & args]
-  (try (apply read-fn input (list* :eof-error? false :eof-value nil args))
+(defn json-str->config
+  [json-str]
+  (try (json/read-str json-str :eof-error? false :eof-value nil)
        (catch Exception e nil)))
 
 (def default-conf
@@ -52,7 +52,7 @@
   [["-m" "--mergeOpts JSON" "JSON structure to merge with the config loaded from files"
     :id :merge-opts
     :default {}
-    :parse-fn (partial json-wrapper json/read-str)
+    :parse-fn json-str->config
     :validate [#(map? %) "Must parse to a valid JSON map"]]])
 
 (defn merge-json-vals
