@@ -73,9 +73,9 @@
   (walk/prewalk #(if (map? %) (eliminate-symbol-keys %) %) coll))
 
 (defn ^:private export-file
-  [{{dir "dir"} :conf} {thread-id ::id}]
+  [context {thread-id ::id}]
   (let [fname (str thread-id ".json")]
-    (io/file dir fname)))
+    (io/file (conf-get (:conf context) "dir") fname)))
 
 (def ^:private write-options
   (list :escape-unicode false :escape-js-separators false
