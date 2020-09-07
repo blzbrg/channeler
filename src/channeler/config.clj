@@ -60,6 +60,13 @@
      ;; if types don't match, just replace first with second
      :else b-val))
 
+(defn conf-seq
+  "Create a config seq (for use with conf-get). Given a baseline-conf and a additional-conf, returns a
+  sequence where additional-conf comes before baseline-conf."
+  [baseline-conf additional-conf]
+  (cons additional-conf
+        (if (seq? baseline-conf) baseline-conf (list baseline-conf))))
+
 (defn incorporate-cli-options
   [conf {merge-opts :merge-opts}]
   (merge-json-vals conf merge-opts))

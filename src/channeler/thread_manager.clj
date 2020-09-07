@@ -1,18 +1,12 @@
 (ns channeler.thread-manager
-  (:require [channeler.chan-th :as chan-th]))
+  (:require [channeler.config :as config]
+            [channeler.chan-th :as chan-th]))
 
 (def thread-handles (atom {}))
 
-(defn conf-for-thread
-  "Create a config for a thread, given a baseline config. Always returns a sequence (see
-  config/conf-get) where additional-conf comes before baseline-conf."
-  [baseline-conf additional-conf]
-  (cons additional-conf
-        (if (seq? baseline-conf) baseline-conf (list baseline-conf))))
-
 (defn context-for-thread
   [general-context additional-conf]
-  (update-in general-context [:conf] conf-for-thread additional-conf))
+  (update-in general-context [:conf] config/conf-seq additional-conf))
 
 (defn spawn-thread!
   "Start a java thread to process a chan thread. Returns a handle referencing it, to be used in
