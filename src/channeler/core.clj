@@ -5,7 +5,7 @@
             [channeler.config :as config]
             [channeler.async-dl :as async-dl]
             [channeler.log-config :as log-config]
-            [clojure.tools.cli :as cli]
+            [channeler.text-commands :as text-commands]
             [clojure.tools.logging :as log]))
 
 (defn eprintln
@@ -14,11 +14,11 @@
 
 (defn do-cli
   [args]
-  (let [opts (cli/parse-opts args config/override-options)]
-    (if-let [errs (opts :errors)]
-      (do (eprintln errs)
+  (let [cli-opts (text-commands/parse-from-arglist args)]
+    (if (:errors cli-opts) ; there are errors if this value is truthy
+      (do (eprintln (:errors cli-opts))
           (System/exit 1))
-      opts)))
+      cli-opts)))
 
 (def initial-state
   {:post-transcade {:transformers []}}) ; empty transcade so there is no error if none are registered

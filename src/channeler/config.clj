@@ -48,13 +48,6 @@
              "no-new-posts-refresh-backoff" {"backoff-strategy" "exponential"
                                              "max-sec-between-refresh" 300}}})
 
-(def override-options
-  [["-m" "--mergeOpts JSON" "JSON structure to merge with the config loaded from files"
-    :id :merge-opts
-    :default {}
-    :parse-fn json-str->config
-    :validate [#(map? %) "Must parse to a valid JSON map"]]])
-
 (defn merge-json-vals
   "If two values are maps, merge them, if they are vectors, conj all items from one into the
   other. Otherwise, the second replaced the first"
