@@ -28,13 +28,12 @@
   [& args]
   (let [{cli-opts :options :as parsed} (do-cli args)
         raw-conf (config/from-file)
-        ;; note that this conf is computed when the whole system starts, and is the from-file merged
-        ;; with the conf from -m. It is an artifact of the old design that this is merged while the
-        ;; per-thread confs are put in a sequence.
+        ;; note that this conf is computed when the whole system starts, and is the -m conf, and
+        ;; then the from-file conf, in a sequence.
         ;;
         ;; Additionally, when only a single thread is being added (rather than running a daemon that
-        ;; handles multiple threads), the per-thread conf IS the -m conf, so the same conf is merged
-        ;; AND put in a sequence. TODO: this needs to be cleaned up.
+        ;; handles multiple threads), the per-thread conf IS the -m conf, but it is still added to
+        ;; the sequence a second time by handle-add-thread.
         conf (config/incorporate-cli-options raw-conf cli-opts)
         _ (log-config/configure-logging! conf) ; run for side effect, want to be before state
         ;; TODO: cleaner "threading" of updating state. This is ugly!
