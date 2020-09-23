@@ -36,9 +36,9 @@
         (recur tail)
         nil))))
 
-(defn ^:private json-wrapper
-  [read-fn input & args]
-  (try (apply read-fn input (list* :eof-error? false :eof-value nil args))
+(defn json-str->config
+  [json-str]
+  (try (json/read-str json-str :eof-error? false :eof-value nil)
        (catch Exception e nil)))
 
 (def default-conf
@@ -48,37 +48,25 @@
              "no-new-posts-refresh-backoff" {"backoff-strategy" "exponential"
                                              "max-sec-between-refresh" 300}}})
 
-(def override-options
-  [["-m" "--mergeOpts JSON" "JSON structure to merge with the config loaded from files"
-    :id :merge-opts
-    :default {}
-    :parse-fn (partial json-wrapper json/read-str)
-    :validate [#(map? %) "Must parse to a valid JSON map"]]])
-
-(defn merge-json-vals
-  "If two values are maps, merge them, if they are vectors, conj all items from one into the
-  other. Otherwise, the second replaced the first"
-  [a-val b-val]
-   (cond ; use the cond to cover every data type produced when parsin json
-     ;; for maps, recursively merge them
-     (every? map? [a-val b-val]) (merge-with merge-json-vals a-val b-val)
-     ;; for vectors, append b to a
-     (every? vector? [a-val b-val]) (apply conj a-val b-val)
-     ;; if types don't match, just replace first with second
-     :else b-val))
+(defn conf-seq
+  "Create a config seq (for use with conf-get). Given a baseline-conf and a additional-conf, returns a
+  sequence where additional-conf comes before baseline-conf."
+  [baseline-conf additional-conf]
+  (cons additional-conf
+        (if (seq? baseline-conf) baseline-conf (list baseline-conf))))
 
 (defn incorporate-cli-options
   [conf {merge-opts :merge-opts}]
-  (merge-json-vals conf merge-opts))
+  (conf-seq conf merge-opts))
 
 (defn from-file
   "Load a config, either from a provided path, or from the default locations (documented in
   default-paths). If path is nil, just use the default conf."
   ([] (from-file (first-usable-file (default-paths))))
-  ([path] (let [eff-loaded (if (some? path)
-                             (json/read (io/reader path))
-                             {})]
-            (merge-json-vals default-conf eff-loaded))))
+  ([path] (if (some? path)
+            (conf-seq default-conf
+                      (json/read (io/reader path)))
+            default-conf)))
 
 (defn conf-get
   "Try the sequence of configs looking for one that contains a value at the \"path\" described by
