@@ -5,6 +5,7 @@
             [channeler.config :as config]
             [channeler.async-dl :as async-dl]
             [channeler.log-config :as log-config]
+            [channeler.remote-control :as remote-control]
             [channeler.text-commands :as text-commands]
             [channeler.thread-manager :as thread-manager]
             [clojure.tools.logging :as log]))
@@ -38,8 +39,18 @@
         _ (log-config/configure-logging! conf) ; run for side effect, want to be before state
         ;; TODO: cleaner "threading" of updating state. This is ugly!
         context (as-> {:state initial-state :conf conf} context
-                    (assoc context :state (async-dl/init context))
-                    (assoc context :state (plugin-loader/load-plugins context)))]
-    (text-commands/handle-command context parsed)
-    (thread-manager/wait-for-all-to-complete)
-    (async-dl/deinit context)))
+                  ;; note that order of initialization is very sensitive, since remote-control will
+                  ;; capture the state at the time it is initted.
+                  (assoc context :state (plugin-loader/load-plugins context))
+                  (assoc context :state (async-dl/init context)))]
+    ;; if it is present, handle the text command. Do this even if daemon is called for.
+    (if (text-commands/is-command? parsed)
+      (text-commands/handle-command context parsed))
+    (if (:daemon cli-opts)
+      ;; if daemon is called for, start it and wait forever
+      (let [context (assoc context :state (remote-control/init context))]
+        @(promise)) ; wait forever. TODO: sane finishing logic
+      ;; otherwise, wait for anything started by handle-command then exit.
+      (thread-manager/wait-for-all-to-complete))
+    (async-dl/deinit context)
+    (shutdown-agents)))
