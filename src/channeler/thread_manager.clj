@@ -1,6 +1,7 @@
 (ns channeler.thread-manager
   (:require [channeler.config :as config]
-            [channeler.chan-th :as chan-th]))
+            [channeler.chan-th :as chan-th]
+            [clojure.tools.logging :as log]))
 
 (def thread-handles (atom {}))
 
@@ -29,5 +30,7 @@
 
 (defn wait-for-all-to-complete
   []
-  (doseq [handle (vals @thread-handles)]
-    (wait-for-completion handle)))
+  (let [handles (vals @thread-handles)]
+    (log/debug "Waiting for" (count handles) "threads to complete")
+    (doseq [handle handles]
+      (wait-for-completion handle))))

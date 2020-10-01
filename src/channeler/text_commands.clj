@@ -1,5 +1,6 @@
 (ns channeler.text-commands
   (:require [clojure.tools.cli]
+            [clojure.tools.logging :as log]
             [channeler.config :as config]
             [channeler.thread-manager :as thread-manager]))
 
@@ -25,4 +26,5 @@
   [context {[command & rest] :arguments :as parsed}]
   ;; TODO: handle unrecognized commands gracefully
   (case command
-    "add-thread" (handle-add-thread context parsed)))
+    "add-thread" (handle-add-thread context parsed)
+    (log/error "Unrecognized command" command)))
