@@ -1,5 +1,6 @@
 (ns channeler.remote-control
-  (:require [clojure.tools.logging :as log]
+  (:require [channeler.config :refer [conf-get]]
+            [clojure.tools.logging :as log]
             [channeler.text-commands :as text-commands]))
 
 (defn line-loop
@@ -49,6 +50,6 @@
 
 (defn init
   [{state :state :as context}]
-  (future (run-server context 1337))
+  (future (run-server context (conf-get (:conf context) "remote-control" "port")))
   ;; TODO: save enough to terminate it later
   state)

@@ -46,7 +46,8 @@
    "async-dl" {"min-sec-between-downloads" 1}
    "thread" {"min-sec-between-refresh" 10
              "no-new-posts-refresh-backoff" {"backoff-strategy" "exponential"
-                                             "max-sec-between-refresh" 300}}})
+                                             "max-sec-between-refresh" 300}}
+   "remote-control" {"port" 9001}})
 
 (defn conf-seq
   "Create a config seq (for use with conf-get). Given a baseline-conf and a additional-conf, returns a
