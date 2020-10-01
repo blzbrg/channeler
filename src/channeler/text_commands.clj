@@ -17,6 +17,12 @@
   [args]
   (clojure.tools.cli/parse-opts args parser))
 
+(defn is-command?
+  "Takes the parsed args (from parse-from-arglist), returns whether it is a command. For example,
+  'add-thread ...' is a command and '-d' is not."
+  [parsed]
+  (not-empty (:arguments parsed)))
+
 (defn handle-add-thread
   [context {[_ & positional-args] :arguments {per-thread-opts :merge-opts} :options}]
   (if (= (count positional-args) 2)
