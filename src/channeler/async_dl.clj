@@ -44,10 +44,10 @@
   [context]
   (let [interval-sec (conf-get (:conf context) "async-dl" "min-sec-between-downloads")
         chan (make-request-chan)
-        ;; spawn thread - no need to keep reference to the future, we will never look at the result.
-        _ (future (download-loop chan interval-sec))]
+        ;; spawn thread - keep ref as an interlock on deinit
+        fut (future (download-loop chan interval-sec))]
     (log/debug "Interval is" interval-sec)
-    (assoc (context :state) ::async-dl-chan chan)))
+    (assoc (context :state) ::async-dl-chan chan ::async-dl-fut fut)))
 
 (defn deinit
   "End the state and asynchronous jobs created during init. Shoudld be called when the application
@@ -55,4 +55,7 @@
   [context]
   ;; closing the channel will cause the download-loop to exit and the thread to end. Returning from
   ;; the main thread won't kill this thread!
-  (async/close! (get-in context [:state ::async-dl-chan])))
+  (async/close! (get-in context [:state ::async-dl-chan]))
+  ;; wait for thread to terminate
+  @(get-in context [:state ::async-dl-fut])
+  (log/info "Async dl thread ended"))
