@@ -32,7 +32,8 @@
 
 (defn handle-command
   [context {[command & rest] :arguments :as parsed}]
-  ;; TODO: handle unrecognized commands gracefully
-  (case command
-    "add-thread" (handle-add-thread context parsed)
-    (log/error "Unrecognized command" command)))
+  (if (:errors parsed)
+    (log/error "Could not understand command" (:arguments parsed) "due to" (:errors parsed))
+    (case command
+      "add-thread" (handle-add-thread context parsed)
+      (log/error "Unrecognized command" command))))
