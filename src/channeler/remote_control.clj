@@ -17,7 +17,7 @@
 (defn handle-command
   [context lines]
   (let [parsed (text-commands/parse-from-arglist lines)] ; pure
-    (log/debug "Received command" (:arguments parsed))
+    (log/debug "Received command" parsed)
     (text-commands/handle-command context parsed))) ; update state via STM
 
 
