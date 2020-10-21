@@ -90,11 +90,6 @@
   ([{id ::id board ::board}] (thread-url board id))
   ([board id] (format "https://a.4cdn.org/%s/thread/%s.json" board id)))
 
-(defn ^:private exit-with-network-error
-  [message]
-  (log/error message)
-  (System/exit 1))
-
 (defn sec->ms [sec] (* 1000 sec))
 
 (defn ^:private exponential-backoff-wait-time
@@ -140,11 +135,11 @@
                       posts (process-posts context th (th "posts"))]
                   (log/debug "init th" (dissoc th "posts"))
                   (assoc th "posts" posts))
-      ::unsupported-status (exit-with-network-error "Exiting due to unsupported status when"
-                                                    "initializing.")
-      ::unmodified (exit-with-network-error "Nonsensical cache response: got 304 unmodified when we"
-                                            "didn't send If-Modified-Since")
-      ::not-found (exit-with-network-error "Got 404 not found when first starting a thread!"))))
+      ::unsupported-status (log/error "Could not init" url "due to unsupported status when"
+                                      "initializing.")
+      ::unmodified (log/error "Could not init" url "due to nonsensical cache response: got 304"
+                              "Unmodified when we didn't send If-Modified-Since")
+      ::not-found (log/error "Could not init" url "because got 404 Not Found"))))
 
 (defn update-posts
   "Uses side effects to update the passed thread, applying post transforms, and returns the new
