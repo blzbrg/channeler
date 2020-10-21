@@ -28,7 +28,7 @@
   (if (= (count positional-args) 2)
     (let [[board thread-id] positional-args]
       (thread-manager/add-thread! context board thread-id per-thread-opts))
-    (System/exit 1))) ; TODO: GRACE!!
+    (log/error "Expected two positional args to add-thread but got:" positional-args)))
 
 (defn handle-command
   [context {[command & rest] :arguments :as parsed}]
