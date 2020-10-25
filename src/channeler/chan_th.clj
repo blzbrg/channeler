@@ -56,8 +56,7 @@
                   (assoc ::last-modified (get-header response "Last-Modified")))]
          304 [::unmodified nil]
          404 [::not-found nil]
-         (do (log/error "Did not understand response code" (.statusCode response))
-             [::unsupported-status nil]))
+         [::unsupported-status (.statusCode response)])
        [::could-not-fetch exception]))))
 
 (defn ^:private post-routine
@@ -149,8 +148,7 @@
                       posts (process-posts context th (th "posts"))]
                   (log/debug "init th" (dissoc th "posts"))
                   (assoc th "posts" posts))
-      ::unsupported-status (log/error "Could not init" url "due to unsupported status when"
-                                      "initializing.")
+      ::unsupported-status (log/error "Could not init" url "due to unsupported status" data)
       ::could-not-fetch (log/error data "Could not fetch" url "due to network error")
       ::unmodified (log/error "Could not init" url "due to nonsensical cache response: got 304"
                               "Unmodified when we didn't send If-Modified-Since")
@@ -173,7 +171,9 @@
                                         (process-posts context old-thread)
                                         (conj old-posts))
                            ::sequential-unmodified-fetches 0)))
-      ::unsupported-status old-thread ; unsupported HTTP status, might as well treat as unchanged
+      ::unsupported-status (do (log/error "Unsupported status" data "when refreshing" url
+                                          "- treating as unchanged")
+                               old-thread)
       ::could-not-fetch (do (log/error data "Network error refreshing" url "- treating as unchanged")
                             old-thread)
       ;; unchanged since last one
