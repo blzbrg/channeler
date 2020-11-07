@@ -26,25 +26,38 @@
       (.get val-opt)
       nil)))
 
+(defn get-and-handle-except
+  "Attempt a GET and catch any exception. Returns [response nil] on success and [nil exception] on
+  error."
+  [url last-modified]
+  (try
+    (let [builder (-> (new java.net.URI url) ; throws UriSyntaxException
+                      (java.net.http.HttpRequest/newBuilder))
+                        ;;(except java.net.UriSyntaxException e (log/error "Unusable URL:" e)))]
+          final-builder (if last-modified
+                          ;; thows IllegalArgumentException
+                          (.header builder "If-Modified-Since" last-modified)
+                          builder)
+          request (.build final-builder) ;; throws IllegalStateException
+          client (java.net.http.HttpClient/newHttpClient)]
+      ;; throws IoException, InterruptedException, IllegalArgumentException, or SecurityException
+      [(.send client request (java.net.http.HttpResponse$BodyHandlers/ofString)) nil])
+    (catch Exception e [nil e])))
+
 (defn ^:private fetch
   ([url] (fetch url nil))
   ([url last-modified]
-   (let [builder (java.net.http.HttpRequest/newBuilder (new java.net.URI url))
-         request (.build (if last-modified
-                           (.header builder "If-Modified-Since" last-modified)
-                           builder))
-         client (java.net.http.HttpClient/newHttpClient)
-         ;; all the exceptions send throws should never happen - fail-fast if they do
-         response (.send client request (java.net.http.HttpResponse$BodyHandlers/ofString))]
-     (case (.statusCode response)
-       200 [::fetched
-            (-> (.body response)
-                (json/read-str)
-                (assoc ::last-modified (get-header response "Last-Modified")))]
-       304 [::unmodified nil]
-       404 [::not-found nil]
-       (do (log/error "Did not understand response code" (.statusCode response))
-           [::unsupported-status nil])))))
+   (let [[response exception] (get-and-handle-except url last-modified)]
+     (if response
+       (case (.statusCode response)
+         200 [::fetched
+              (-> (.body response)
+                  (json/read-str)
+                  (assoc ::last-modified (get-header response "Last-Modified")))]
+         304 [::unmodified nil]
+         404 [::not-found nil]
+         [::unsupported-status (.statusCode response)])
+       [::could-not-fetch exception]))))
 
 (defn ^:private post-routine
   [post-transcade th post]
@@ -90,11 +103,6 @@
   ([{id ::id board ::board}] (thread-url board id))
   ([board id] (format "https://a.4cdn.org/%s/thread/%s.json" board id)))
 
-(defn ^:private exit-with-network-error
-  [message]
-  (log/error message)
-  (System/exit 1))
-
 (defn sec->ms [sec] (* 1000 sec))
 
 (defn ^:private exponential-backoff-wait-time
@@ -130,9 +138,9 @@
   [context board-name thread-id]
   (let [url (thread-url board-name thread-id)
         _ (log/info "Initializing thread" url)
-        [fetch-kw fetched-th] (fetch url)]
+        [fetch-kw data] (fetch url)]
     (case fetch-kw
-      ::fetched (let [th (-> fetched-th
+      ::fetched (let [th (-> data
                              (assoc ::id thread-id
                                     ::board board-name
                                     ::conf (:conf context)
@@ -140,19 +148,20 @@
                       posts (process-posts context th (th "posts"))]
                   (log/debug "init th" (dissoc th "posts"))
                   (assoc th "posts" posts))
-      ::unsupported-status (exit-with-network-error "Exiting due to unsupported status when"
-                                                    "initializing.")
-      ::unmodified (exit-with-network-error "Nonsensical cache response: got 304 unmodified when we"
-                                            "didn't send If-Modified-Since")
-      ::not-found (exit-with-network-error "Got 404 not found when first starting a thread!"))))
+      ::unsupported-status (log/error "Could not init" url "due to unsupported status" data)
+      ::could-not-fetch (log/error data "Could not fetch" url "due to network error")
+      ::unmodified (log/error "Could not init" url "due to nonsensical cache response: got 304"
+                              "Unmodified when we didn't send If-Modified-Since")
+      ::not-found (log/error "Could not init" url "because got 404 Not Found"))))
 
 (defn update-posts
   "Uses side effects to update the passed thread, applying post transforms, and returns the new
   version"
   [context {old-posts "posts" :as old-thread}]
-  (let [[fetch-kw fetched-th] (fetch (thread-url old-thread) (old-thread ::last-modified))]
+  (let [url (thread-url old-thread)
+        [fetch-kw data] (fetch url (old-thread ::last-modified))]
     (case fetch-kw
-      ::fetched (let [raw-new-posts (new-posts-from-json old-posts fetched-th)]
+      ::fetched (let [raw-new-posts (new-posts-from-json old-posts data)]
                   (if (empty? raw-new-posts)
                     ;; thread unchanged
                     (mark-unmodified old-thread)
@@ -162,7 +171,11 @@
                                         (process-posts context old-thread)
                                         (conj old-posts))
                            ::sequential-unmodified-fetches 0)))
-      ::unsupported-status old-thread ; unsupported HTTP status, might as well treat as unchanged
+      ::unsupported-status (do (log/error "Unsupported status" data "when refreshing" url
+                                          "- treating as unchanged")
+                               old-thread)
+      ::could-not-fetch (do (log/error data "Network error refreshing" url "- treating as unchanged")
+                            old-thread)
       ;; unchanged since last one
       ::unmodified (do (log/info "Thread unchanged since" (old-thread ::last-modified))
                        (mark-unmodified old-thread))
