@@ -22,13 +22,19 @@
 
 
 (defn command-loop
-  [context line-reader]
+  [context conn-sock line-reader]
   (if-let [lines (line-loop line-reader)] ; blocking
     ;; handle a command
     (do (handle-command context lines)
-        (recur context line-reader))
-    ;; conn closed
-    nil))
+        (recur context conn-sock line-reader))
+    ;; conn closed by other end (ie. we received a FIN), we should explicitly close the socket. This
+    ;; is needed for when the other end is openbsd-netcat. When openbsd-netcat is run as nc -N, it
+    ;; will send a FIN when getting EOF from stdin, but will not exit until it gets a FIN from the
+    ;; other side. closing the socket explicitly sends the FIN. socat, gnu-netcat, and ncat all do
+    ;; not care about receiving the FIN
+    ;; See https://serverfault.com/questions/783169/bsd-nc-netcat-does-not-terminate-on-eof
+    (do (log/debug "Connection closed by other end")
+        (.close conn-sock))))
 
 (defn accept-loop
   [context listen-sock]
@@ -37,7 +43,7 @@
                          (new java.io.InputStreamReader)
                          (new java.io.BufferedReader))]
     (log/debug "Connected to" (.getRemoteSocketAddress conn-sock))
-    (command-loop context line-reader)
+    (command-loop context conn-sock line-reader)
     (recur context listen-sock)))
 
 (defn run-server
