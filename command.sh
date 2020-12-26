@@ -29,4 +29,20 @@ then
     # socat sees EOF on stdin it begins to close it's end of the socket, waiting for a bit
     # for responses.
     printf "$msg" | socat - tcp:localhost:9001
+elif command -v nc 2>&1 > /dev/null
+then
+    # nc is netcat. Implementations are ubiquitous, but fragmented.
+    if nc -h 2>&1 > /dev/null | grep -- '--close'
+    then
+        # --close is undocumented, but is tested in gnu-netcat 0.7.1
+        # See https://sourceforge.net/p/netcat/bugs/60/
+        printf "$msg" | nc --close localhost 9001
+    elif nc -h 2>&1 > /dev/null | grep -- '-N'
+    then
+        # openbsd-netcat requires -N (and also that the server send a FIN in response)
+        printf "$msg" | nc -N localhost 9001
+    else
+        # last-ditch effort, use -w, which apparently exists on Windows
+        printf "$msg" | nc -w 1 localhost 9001
+    fi
 fi
