@@ -23,4 +23,10 @@ then
     # Apparently ncat on the client side doesn't close the connection when receiving EOT,
     # so --send-only is needed
     printf "$msg" | ncat --send-only localhost 9001
+elif command -v socat 2>&1 > /dev/null
+then
+    # Hopefully socat is more uniform than netcat. Tested on socat 1.7.3.4 on Arch. When
+    # socat sees EOF on stdin it begins to close it's end of the socket, waiting for a bit
+    # for responses.
+    printf "$msg" | socat - tcp:localhost:9001
 fi
