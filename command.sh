@@ -32,12 +32,13 @@ then
 elif command -v nc 2>&1 > /dev/null
 then
     # nc is netcat. Implementations are ubiquitous, but fragmented.
-    if nc -h 2>&1 > /dev/null | grep -- '--close'
+    ncHelp=`nc -h 2>&1 > /dev/null`
+    if echo -n "$ncHelp" | grep --quiet -- '--close' -
     then
         # --close is undocumented, but is tested in gnu-netcat 0.7.1
         # See https://sourceforge.net/p/netcat/bugs/60/
         printf "$msg" | nc --close localhost 9001
-    elif nc -h 2>&1 > /dev/null | grep -- '-N'
+    elif echo -n "$ncHelp" | grep --quiet -- '-N' -
     then
         # openbsd-netcat requires -N (and also that the server send a FIN in response)
         printf "$msg" | nc -N localhost 9001
