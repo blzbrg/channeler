@@ -75,7 +75,9 @@
        ;; collect into one channel with the results of all the others
        (async/map list)
        ;; block our thread waiting for the channel. This had better not be in a coroutine!
-       (async/<!!)))
+       (async/<!!)
+       ;; make it into a vec so we can use conj or into to append when updating
+       (vec)))
 
 (defn ^:private eliminate-symbol-keys
   [m]
@@ -169,7 +171,8 @@
                     (assoc old-thread
                            "posts" (->> raw-new-posts
                                         (process-posts context old-thread)
-                                        (conj old-posts))
+                                        ;; conj in each new post. Appends as long as old posts is vec
+                                        (into old-posts))
                            ::sequential-unmodified-fetches 0)))
       ::unsupported-status (do (log/error "Unsupported status" data "when refreshing" url
                                           "- treating as unchanged")
