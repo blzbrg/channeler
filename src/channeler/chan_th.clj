@@ -70,10 +70,12 @@
   (->> json-posts
        ;; channel for each post (fed by coroutine)
        (map (partial post-routine post-transcade th))
-       ;; get only one thing
-       (map (partial async/take 1))
-       ;; collect into one channel with the results of all the others
-       (async/map list)
+       ;; collect into one channel with the results of all the others. Must be vector so that conj
+       ;; used in update will append.
+       ;;
+       ;; The post-routine channel will only contain one item each, so the channel created by map
+       ;; will only contain one item.
+       (async/map vector)
        ;; block our thread waiting for the channel. This had better not be in a coroutine!
        (async/<!!)))
 
@@ -169,7 +171,8 @@
                     (assoc old-thread
                            "posts" (->> raw-new-posts
                                         (process-posts context old-thread)
-                                        (conj old-posts))
+                                        ;; conj in each new post. Appends as long as old posts is vec
+                                        (into old-posts))
                            ::sequential-unmodified-fetches 0)))
       ::unsupported-status (do (log/error "Unsupported status" data "when refreshing" url
                                           "- treating as unchanged")

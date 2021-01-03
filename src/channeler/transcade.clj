@@ -64,9 +64,9 @@
   (if (nil? val) ::closed val))
 
 (defn coroutine-loop
-  "Return go block that executes the given transcade on the init-state,
-  using the context ctx. The result channel of the go block will be
-  the final state (once the transcade has terminated).
+  "Return channel that will yield the final state of running the given
+  transcade on the init-state, using the context ctx. The channel will
+  only yield only this item and then be closed.
 
   Transforms cannot use >!, >!!, etc. because they will be separated
   from the top of the go block by a function call, but they can use
