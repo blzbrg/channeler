@@ -72,12 +72,11 @@
        (map (partial post-routine post-transcade th))
        ;; get only one thing
        (map (partial async/take 1))
-       ;; collect into one channel with the results of all the others
-       (async/map list)
+       ;; collect into one channel with the results of all the others. Must be vector so that conj
+       ;; used in update will append.
+       (async/map vector)
        ;; block our thread waiting for the channel. This had better not be in a coroutine!
-       (async/<!!)
-       ;; make it into a vec so we can use conj or into to append when updating
-       (vec)))
+       (async/<!!)))
 
 (defn ^:private eliminate-symbol-keys
   [m]
