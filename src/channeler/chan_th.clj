@@ -70,10 +70,11 @@
   (->> json-posts
        ;; channel for each post (fed by coroutine)
        (map (partial post-routine post-transcade th))
-       ;; get only one thing
-       (map (partial async/take 1))
        ;; collect into one channel with the results of all the others. Must be vector so that conj
        ;; used in update will append.
+       ;;
+       ;; The post-routine channel will only contain one item each, so the channel created by map
+       ;; will only contain one item.
        (async/map vector)
        ;; block our thread waiting for the channel. This had better not be in a coroutine!
        (async/<!!)))
