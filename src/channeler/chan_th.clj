@@ -146,6 +146,16 @@
     ::not-found (log/error "Could not init" url "because got 404 Not Found")
     ::fetched true))
 
+(defn ^:private verify-dir-usable
+  [url context]
+  (let [dir-file (io/file (conf-get (:conf context) "dir"))]
+    (if (.isDirectory dir-file)
+      true
+      (let [path (.getPath dir-file)]
+        (if (.exists dir-file)
+          (log/error "Could not init" url "because" path "is a file instead of a directory")
+          (log/error "Could not init" url "because" path "does not exist"))))))
+
 (defn init-thread
   [context board-name thread-id]
   (let [url (thread-url board-name thread-id)
