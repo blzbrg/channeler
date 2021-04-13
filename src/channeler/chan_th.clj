@@ -136,25 +136,44 @@
   [th]
   (update th ::sequential-unmodified-fetches (fnil inc 0)))
 
+(defn ^:private verify-fetch
+  [url fetch-kw data]
+  (case fetch-kw
+    ::unsupported-status (log/error "Could not init" url "due to unsupported status" data)
+    ::could-not-fetch (log/error data "Could not fetch" url "due to network error")
+    ::unmodified (log/error "Could not init" url "due to nonsensical cache response: got 304"
+                   "Unmodified when we didn't send If-Modified-Since")
+    ::not-found (log/error "Could not init" url "because got 404 Not Found")
+    ::fetched true))
+
+(defn ^:private verify-dir-usable
+  [url context]
+  (let [dir-file (io/file (conf-get (:conf context) "dir"))]
+    (if (.isDirectory dir-file)
+      true
+      (let [path (.getPath dir-file)]
+        (if (.exists dir-file)
+          (log/error "Could not init" url "because" path "is a file instead of a directory")
+          (log/error "Could not init" url "because" path "does not exist"))))))
+
 (defn init-thread
   [context board-name thread-id]
-  (let [url (thread-url board-name thread-id)
-        _ (log/info "Initializing thread" url)
-        [fetch-kw data] (fetch url)]
-    (case fetch-kw
-      ::fetched (let [th (-> data
-                             (assoc ::id thread-id
-                                    ::board board-name
-                                    ::conf (:conf context)
-                                    ::state (:state context)))
-                      posts (process-posts context th (th "posts"))]
-                  (log/debug "init th" (dissoc th "posts"))
-                  (assoc th "posts" posts))
-      ::unsupported-status (log/error "Could not init" url "due to unsupported status" data)
-      ::could-not-fetch (log/error data "Could not fetch" url "due to network error")
-      ::unmodified (log/error "Could not init" url "due to nonsensical cache response: got 304"
-                              "Unmodified when we didn't send If-Modified-Since")
-      ::not-found (log/error "Could not init" url "because got 404 Not Found"))))
+  (let [url (thread-url board-name thread-id)]
+    (log/info "Initializing thread" url)
+    ;; first, do verifications which don't require fetch
+    (if (verify-dir-usable url context)
+      ;; then, do the fetch and verify the results
+      (let [[fetch-kw data] (fetch url)]
+        (if (verify-fetch url fetch-kw data)
+          ;; if the fetch succeeded, handle contents
+          (let [th (-> data
+                       (assoc ::id thread-id
+                              ::board board-name
+                              ::conf (:conf context)
+                              ::state (:state context)))
+                posts (process-posts context th (th "posts"))]
+            (log/debug "init th" (dissoc th "posts"))
+            (assoc th "posts" posts)))))))
 
 (defn update-posts
   "Uses side effects to update the passed thread, applying post transforms, and returns the new
