@@ -5,6 +5,10 @@
 
 (def thread-handles (atom {}))
 
+(defn thread-present?
+  [board-name thread-id]
+  (contains? @thread-handles [board-name thread-id]))
+
 (defn context-for-thread
   [general-context additional-conf]
   (update-in general-context [:conf] config/conf-seq additional-conf))
@@ -13,15 +17,17 @@
   "Start a java thread to process a chan thread. Returns a handle referencing it, to be used in
   eg. wait-for-completion."
   [context board-name thread-id]
-  (let [init-prom (promise)
-        handle (future (if-let [th (chan-th/init-thread context board-name thread-id)]
-                         (do (deliver init-prom :initted)
-                             (chan-th/thread-loop context th))
-                         (deliver init-prom :not-initted)))]
-    (if (= @init-prom :not-initted)
-      :not-initted ; init-thread is responsible for logging why it did not init
-      (do (swap! thread-handles #(assoc % [board-name thread-id] handle))
-          handle))))
+  (if (thread-present? board-name thread-id)
+    (log/info "Ignoring" board-name "thread" thread-id "because it is already in the system")
+    (let [init-prom (promise)
+          handle (future (if-let [th (chan-th/init-thread context board-name thread-id)]
+                           (do (deliver init-prom :initted)
+                               (chan-th/thread-loop context th))
+                           (deliver init-prom :not-initted)))]
+      (if (= @init-prom :not-initted)
+        :not-initted ; init-thread is responsible for logging why it did not init
+        (do (swap! thread-handles #(assoc % [board-name thread-id] handle))
+            handle)))))
 
 (defn add-thread!
   "Spawn thread and return handle (see spawn-thread!), optionally adding per-thread config."
