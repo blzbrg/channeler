@@ -158,18 +158,22 @@
 
 (defn init-thread
   [context board-name thread-id]
-  (let [url (thread-url board-name thread-id)
-        _ (log/info "Initializing thread" url)
-        [fetch-kw data] (fetch url)]
-    (if (verify-fetch url fetch-kw data)
-      (let [th (-> data
-                   (assoc ::id thread-id
-                          ::board board-name
-                          ::conf (:conf context)
-                          ::state (:state context)))
-            posts (process-posts context th (th "posts"))]
-        (log/debug "init th" (dissoc th "posts"))
-        (assoc th "posts" posts)))))
+  (let [url (thread-url board-name thread-id)]
+    (log/info "Initializing thread" url)
+    ;; first, do verifications which don't require fetch
+    (if (verify-dir-usable url context)
+      ;; then, do the fetch and verify the results
+      (let [[fetch-kw data] (fetch url)]
+        (if (verify-fetch url fetch-kw data)
+          ;; if the fetch succeeded, handle contents
+          (let [th (-> data
+                       (assoc ::id thread-id
+                              ::board board-name
+                              ::conf (:conf context)
+                              ::state (:state context)))
+                posts (process-posts context th (th "posts"))]
+            (log/debug "init th" (dissoc th "posts"))
+            (assoc th "posts" posts)))))))
 
 (defn update-posts
   "Uses side effects to update the passed thread, applying post transforms, and returns the new
