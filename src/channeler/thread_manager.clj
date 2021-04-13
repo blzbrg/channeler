@@ -13,11 +13,15 @@
   "Start a java thread to process a chan thread. Returns a handle referencing it, to be used in
   eg. wait-for-completion."
   [context board-name thread-id]
-  (let [handle (future (if-let [th (chan-th/init-thread context board-name thread-id)]
-                         (chan-th/thread-loop context th)
-                         ::thread-not-initted))]
-    (swap! thread-handles #(assoc % [board-name thread-id] handle))
-    handle))
+  (let [init-prom (promise)
+        handle (future (if-let [th (chan-th/init-thread context board-name thread-id)]
+                         (do (deliver init-prom :initted)
+                             (chan-th/thread-loop context th))
+                         (deliver init-prom :not-initted)))]
+    (if (= @init-prom :not-initted)
+      :not-initted ; init-thread is responsible for logging why it did not init
+      (do (swap! thread-handles #(assoc % [board-name thread-id] handle))
+          handle))))
 
 (defn add-thread!
   "Spawn thread and return handle (see spawn-thread!), optionally adding per-thread config."
