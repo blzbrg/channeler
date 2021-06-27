@@ -20,9 +20,11 @@
   (if (thread-present? board-name thread-id)
     (log/info "Ignoring" board-name "thread" thread-id "because it is already in the system")
     (let [init-prom (promise)
-          handle (future (if-let [th (chan-th/init-thread context board-name thread-id)]
+          handle (future (if-let [th (chan-th/init context board-name thread-id)]
                            (do (deliver init-prom :initted)
-                               (chan-th/thread-loop context th))
+                               (->> th
+                                    (chan-th/process-current-posts context)
+                                    (chan-th/thread-loop context)))
                            (deliver init-prom :not-initted)))]
       (if (= @init-prom :not-initted)
         :not-initted ; init-thread is responsible for logging why it did not init
