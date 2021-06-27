@@ -26,14 +26,19 @@
       (.get val-opt)
       nil)))
 
+(def default-fetch-timeout
+  "Unit: seconds"
+  5)
+
 (defn get-and-handle-except
   "Attempt a GET and catch any exception. Returns [response nil] on success and [nil exception] on
   error."
   [url last-modified]
   (try
     (let [builder (-> (new java.net.URI url) ; throws UriSyntaxException
-                      (java.net.http.HttpRequest/newBuilder))
-                        ;;(except java.net.UriSyntaxException e (log/error "Unusable URL:" e)))]
+                      (java.net.http.HttpRequest/newBuilder)
+                      ;; if exceeded, send will throw HttpTimeoutException
+                      (.timeout (java.time.Duration/ofSeconds default-fetch-timeout)))
           final-builder (if last-modified
                           ;; thows IllegalArgumentException
                           (.header builder "If-Modified-Since" last-modified)
