@@ -216,12 +216,13 @@
       ::not-found nil))) ; thread has 404d
 
 
-(defn thread-loop
-  "Refresh thread, infinitely, inline. Sleeps thread to wait."
+(defn loop-iteration
+  "One cycle around the thread loop: refresh thread and sleep to wait. Return new thread value, or nil
+  if thread is 404."
   [context th]
   (export-thread context th)
   (Thread/sleep (wait-time context th))
   (log/info "Updating" (thread-url th)) ; for now, just use URL to represent thread
   (if-let [new-th (update-posts context th)]
-    (recur context new-th)
+    new-th
     (log/info "Thread is 404" (thread-url th))))
