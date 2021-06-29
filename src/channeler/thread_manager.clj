@@ -34,12 +34,14 @@
                            ;; reset!) Notice that new-th is computed with side effects, and there is
                            ;; no way to handle someone else mofidying the same atom at the same
                            ;; time (thus no reason to use swap!)
-                           (if-let [new-th (chan-th/loop-iteration context @th-at)]
-                             (do (reset! th-at new-th)
-                                 (recur))
-                             ;; when the thread 404s, the value of the future is the last value of
-                             ;; the thread
-                             @th-at))))
+                           (let [new-th (chan-th/loop-iteration context @th-at)]
+                             ;; store state
+                             (reset! th-at new-th)
+                             (if (chan-th/completed? @th-at)
+                               ;; when the thread 404s, the value of the future is the last value of
+                               ;; the thread
+                               @th-at
+                               (recur))))))
                      ;; if init failed...
                      (deliver init-prom :not-initted)))]
       (if (= @init-prom :not-initted)

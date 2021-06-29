@@ -161,6 +161,11 @@
           (log/error "Could not init" url "because" path "is a file instead of a directory")
           (log/error "Could not init" url "because" path "does not exist"))))))
 
+(defn completed?
+  "Return truthy if no more refreshes for thread are possible (eg. thread is deleted)"
+  [th]
+  (::completed th))
+
 (defn init
   "Initialize thread. Download the thread, log any issues thereof, and set up state, but do not do any
   post processing."
@@ -213,8 +218,7 @@
       ;; unchanged since last one
       ::unmodified (do (log/info "Thread unchanged since" (old-thread ::last-modified))
                        (mark-unmodified old-thread))
-      ::not-found nil))) ; thread has 404d
-
+      ::not-found (assoc old-thread ::completed 404)))) ; thread has 404d
 
 (defn loop-iteration
   "One cycle around the thread loop: refresh thread and sleep to wait. Return new thread value, or nil
@@ -223,6 +227,9 @@
   (export-thread context th)
   (Thread/sleep (wait-time context th))
   (log/info "Updating" (thread-url th)) ; for now, just use URL to represent thread
-  (if-let [new-th (update-posts context th)]
-    new-th
-    (log/info "Thread is 404" (thread-url th))))
+  (let [new-th (update-posts context th)]
+    ;; log 404 if it is completed
+    (if (completed? new-th)
+      (log/info "Thread is 404" (thread-url th)))
+    ;; return new thread at end
+    new-th))
