@@ -20,13 +20,21 @@
     (log/debug "Received command" parsed)
     (text-commands/handle-command context parsed))) ; update state via STM
 
+(defn reply
+  [context conn-sock cmd-res]
+  (let [writer (->> (.getOutputStream conn-sock)
+                    (new java.io.OutputStreamWriter))]
+    (.write writer cmd-res)
+    (.flush writer)))
 
 (defn command-loop
   [context conn-sock line-reader]
   (if-let [lines (line-loop line-reader)] ; blocking
     ;; handle a command
-    (do (handle-command context lines)
-        (recur context conn-sock line-reader))
+    (let [cmd-res (handle-command context lines)]
+      (if cmd-res
+        (reply context conn-sock cmd-res))
+      (recur context conn-sock line-reader))
     ;; conn closed by other end (ie. we received a FIN), we should explicitly close the socket. This
     ;; is needed for when the other end is openbsd-netcat. When openbsd-netcat is run as nc -N, it
     ;; will send a FIN when getting EOF from stdin, but will not exit until it gets a FIN from the
@@ -48,11 +56,13 @@
 
 (defn run-server
   [context port]
-  (let [sock-addr (new java.net.InetSocketAddress "localhost" port)
-        listen-sock (new java.net.ServerSocket)]
-    (.bind listen-sock sock-addr) ; TODO: graceful error handling
-    (log/info "Remote control server listening on" port)
-    (accept-loop context listen-sock)))
+  (try
+    (let [sock-addr (new java.net.InetSocketAddress "localhost" port)
+          listen-sock (new java.net.ServerSocket)]
+      (.bind listen-sock sock-addr) ; TODO: graceful error handling
+      (log/info "Remote control server listening on" port)
+      (accept-loop context listen-sock))
+    (catch Exception e (log/error e))))
 
 (defn init
   [{state :state :as context}]
