@@ -27,14 +27,18 @@
     (.write writer cmd-res)
     (.flush writer)))
 
-(defn command-loop
-  [context conn-sock line-reader]
+(defn handle-connection
+  "Handle one or more commands from a connection"
+  [context conn-sock line-reader multiple-commands]
   (if-let [lines (line-loop line-reader)] ; blocking
     ;; handle a command
     (let [cmd-res (handle-command context lines)]
       (if cmd-res
         (reply context conn-sock cmd-res))
-      (recur context conn-sock line-reader))
+      (if multiple-commands
+        (recur context conn-sock line-reader multiple-commands)
+        ;; close if we are not waiting for another command
+        (.close conn-sock)))
     ;; conn closed by other end (ie. we received a FIN), we should explicitly close the socket. This
     ;; is needed for when the other end is openbsd-netcat. When openbsd-netcat is run as nc -N, it
     ;; will send a FIN when getting EOF from stdin, but will not exit until it gets a FIN from the
@@ -51,7 +55,9 @@
                          (new java.io.InputStreamReader)
                          (new java.io.BufferedReader))]
     (log/debug "Connected to" (.getRemoteSocketAddress conn-sock))
-    (command-loop context conn-sock line-reader)
+    ;; for now, always disconnect after doing one command. TBD if multiple commands in one session
+    ;; is worth supporting again.
+    (handle-connection context conn-sock line-reader false)
     (recur context listen-sock)))
 
 (defn run-server
