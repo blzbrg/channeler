@@ -1,4 +1,5 @@
-(ns channeler.request)
+(ns channeler.request
+  (:require [channeler.map-tools :as map-tools]))
 
 ;; === Path utils ===
 
@@ -27,6 +28,33 @@
   [ctx path-in-context req-key]
   (let [req (get-in (get-in ctx path-in-context) [::requests req-key])]
     (contexify-req-impl req path-in-context req-key)))
+
+(defn has-request?
+  [d]
+  ;; must check for not ordered since contains will fail
+  (and (not (sorted? d)) (contains? d ::requests) (not-empty (get d ::requests))))
+
+(defn find-paths-with-reqs
+  "Given a map that might contain requests, search for subtrees with request maps. Returns a sequence
+  of the paths to those subtrees."
+  [d]
+  (map-tools/find-matching-paths d has-request?))
+
+(defn contexify-reqs-in-path
+  "Given a map and a path to a subtree with requests, return contexified versions of all requests in
+  that subtree."
+  [ctx path-in-context]
+  (->> (get (get-in ctx path-in-context) ::requests)
+       (map (fn [[req-key req]] (contexify-req-impl req path-in-context req-key)))))
+
+(defn contexify-all-reqs
+  "Take a map of maps containing subtrees with requests and return a sequence of those requests, contexified.
+  Although the tree traversal is done eagerly, the \"contexification\" is done lazily."
+  [d]
+  (->> d
+       (find-paths-with-reqs)
+       (map (partial contexify-reqs-in-path d))
+       (flatten)))
 
 ;; === Removing requests ===
 

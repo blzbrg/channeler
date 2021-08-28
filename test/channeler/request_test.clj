@@ -24,6 +24,11 @@
       (test/is (= {:a 1 :b {:c {}}}
                   (request/remove-requests-from-context req-ctx [a-req b-req]))))))
 
+(test/deftest contexify-all-reqs-test
+  (let [a-req (request/contexified-req req-ctx [:b :c] :a-req)
+        b-req (request/contexified-req req-ctx [:b :c] "b-req")]
+    (test/is (= (seq [a-req b-req]) (request/contexify-all-reqs req-ctx)))))
+
 (def resp-ctx
   {:a 1
    :b {:c {}}})
