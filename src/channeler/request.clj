@@ -10,7 +10,12 @@
   [resp]
   (concat (::path-in-context resp) [::responses (::req-key resp)]))
 
-;; === Interplay between contexts and dispatching ===
+;; === Find and contexify ===
+
+(defn contexify-req-impl
+  [req path-in-context req-key]
+  ;; always convert to seq for consistency
+  (assoc req ::path-in-context (seq path-in-context) ::req-key req-key))
 
 (defn contexified-req
   "Grab a request out of the context and add enough information for the response to be integrated in
@@ -21,8 +26,9 @@
   a key `:c` means that a request is expected in `[:a :b ::requests :c]`."
   [ctx path-in-context req-key]
   (let [req (get-in (get-in ctx path-in-context) [::requests req-key])]
-    ;; always convert to seq for consistency
-    (assoc req ::path-in-context (seq path-in-context) ::req-key req-key)))
+    (contexify-req-impl req path-in-context req-key)))
+
+;; === Removing requests ===
 
 (defn maybe-cleanup-reqs
   [req-container]
