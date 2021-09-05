@@ -22,3 +22,12 @@
               (expired-and-sched (atom sample-four) 2)))
   (test/is (= [(seq [:a :b :c :d]) (sorted-map 4 (list :e :f))]
               (expired-and-sched (atom sample-four) 3))))
+
+(def sample-two
+  (sorted-map 1 (list :a) 2 (list :b)))
+
+(test/deftest schedule-test
+  (test/is (= (sorted-map 1 (list :a) 2 (list :new :b))
+              (timer/schedule (atom sample-two) 2 :new)))
+  (test/is (= (sorted-map 1 (list :a) 2 (list :b) 3 (list :new))
+              (timer/schedule (atom sample-two) 3 :new))))

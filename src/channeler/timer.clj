@@ -38,6 +38,12 @@
   [schedule-ref now-nanos]
   (apply items-removed (swap-vals! schedule-ref remove-expired-all now-nanos)))
 
+;; === Scheduling ===
+
+(defn schedule
+  [schedule-ref target-time event]
+  (swap! schedule-ref update target-time conj event))
+
 ;; === Loop helpers ===
 
 (def sleep-interval-ref
