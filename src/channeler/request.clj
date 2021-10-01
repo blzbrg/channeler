@@ -91,3 +91,20 @@
 (defn integrate-responses
   [ctx resps]
   (reduce integrate-response ctx resps))
+
+;; === Response ===
+
+(defn expects-response?
+  [req]
+  (contains? req ::response-dest))
+
+(defmulti send-response!
+  (fn [{dest ::response-dest} & _] (type dest)))
+
+(defmethod send-response! clojure.lang.Agent
+  [{agt ::response-dest :as resp}]
+  (send agt integrate-response resp))
+
+(defmethod send-response! clojure.lang.IFn
+  [{fun ::response-dest :as resp}]
+  (fun resp))
