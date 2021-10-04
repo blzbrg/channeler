@@ -14,46 +14,36 @@
   [post-json]
   (and (contains? post-json "tim") (contains? post-json "ext")))
 
-(defn ^:private pre-dl?
-  "Return true iff post has an image and image is yet to be downloaded"
+(defn requested?
   [post]
-  (and (has-image post)
-       (not (contains? post ::dl-chan))))
+  (or (get-in post [:channeler.request/responses ::image-download])
+      (get-in post [:channeler.request/requests ::image-download])))
 
-(defn ^:private init-dl
-  [_ {board ::chan-th/board conf ::chan-th/conf state ::chan-th/state} post]
-  (let [web-filename (clojure.string/join (list (post "tim") (post "ext")))
-        url (image-url board (post "tim") (post "ext"))
-        local (clojure.java.io/file (conf-get conf "dir") web-filename)
-        resp-chan (async-dl/make-response-chan)]
-    (async/put! (::async-dl/async-dl-chan state) (async-dl/dl-request url local resp-chan))
-    (-> post
-        (transcade/push-awaits resp-chan)
-        (assoc ::dl-chan resp-chan))))
+(defn local-path
+  [conf post]
+  (let [filename (clojure.string/join [(post "tim") (post "ext")])]
+    ;; stupid dance to call varargs method
+    (.toString (java.nio.file.Path/of (conf-get conf "dir") (into-array [filename])))))
 
-(defn ^:private dl-done?
-  "Return true iff post image has been downloaded"
-  [{dl-chan ::dl-chan :as post}]
-  (contains? (post ::transcade/await-results) dl-chan))
+(defn req-dl
+  [{board ::chan-th/board conf ::chan-th/conf state ::chan-th/state} post]
+  (let [req {;; remote
+             :channeler.limited-downloader/download-url
+             (image-url board (post "tim") (post "ext"))
+             ;; local
+             :channeler.limited-downloader/download-target
+             (local-path conf post)
+             ;; target service
+             :channeler.service/service-key
+             :channeler.limited-downloader/rate-limited-downloader}]
+    (assoc-in post [:channeler.request/requests ::image-download] req)))
 
-(defn ^:private finish-dl
-  [_ _ {resp-chan ::dl-chan :as post}]
-  (let [[[status _ local] new-post] (transcade/pop-awaits-result post resp-chan)]
-    (if (= status ::async-dl/done)
-      ;; async-dl tells us it was a success
-      (assoc new-post ::local-image-path (.getAbsolutePath local))
-      ;; async-dl tells us something else (TODO)
-      new-post)))
-
-(defrecord ImageDownload []
+(defrecord RequestImageDownload []
   transcade/Transformer
-  (applicable? [_ _ post] (or (pre-dl? post) (dl-done? post)))
-  (transform [this ctx post]
-    (if (pre-dl? post)
-      (init-dl this ctx post)
-      (finish-dl this ctx post))))
+  (applicable? [_ _ post] (and (has-image post) (not (requested? post))))
+  (transform [_ ctx post] (req-dl ctx post)))
 
 (defn plugin-main
-  [_ _]  ; ignore plug conf and context for now
-  (let [post-transform (->ImageDownload)]
+  [_ plug-conf]  ; ignore context for now
+  (let [post-transform (->RequestImageDownload)]
     (plugin/register-post-transform post-transform)))
