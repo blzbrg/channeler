@@ -104,9 +104,9 @@
       nil)))
 
 (defn timer-loop
-  [schedule-ref asap-ref]
+  [time-source schedule-ref asap-ref]
   (loop [queue clojure.lang.PersistentQueue/EMPTY]
-    (let [exp-q (queue-expiring schedule-ref queue (System/nanoTime))]
+    (let [exp-q (queue-expiring schedule-ref queue (time-source))]
       ;; If there is something in the queue (items that came from sched-ref) download it. If not,
       ;; try to take an item from asap-ref.
       (if-let [item (if-let [it (peek exp-q)]
@@ -115,8 +115,9 @@
         (download-req! item))
       ;; Wait for ratelimit
       ;;
-      ;; TODO: if we want to support timer times with more precision than `ms-between-download`, we
-      ;; would need multiple little sleeps and with expiries, until they all add up to it.
+      ;; TODO: this should really be integrated with time-source rather than relying on sleep
+      ;; times. This would additonally allow timer times with more precision than
+      ;; `ms-between-download`.
       (Thread/sleep ms-between-download)
       ;; Repeat
       ;;
@@ -137,14 +138,16 @@
   (stop [this] nil)) ;; TODO TODO TODO
 
 (defn init-service
-  [ctx]
-  (let [sched-ref (atom (sorted-map))
-        asap-ref (atom clojure.lang.PersistentQueue/EMPTY)
-        ^Runnable entry-point (partial timer-loop sched-ref asap-ref)
-        th (Thread. entry-point)
-        service (->RateLimitDownloaderService th sched-ref asap-ref)]
-    (.start th)
-    {::rate-limited-downloader service}))
+  ;; time source can be passed to replace System/nanoTime with a mock for virtual time in tests.
+  ([ctx] (init-service ctx timer/nano-mono-time-source))
+  ([ctx time-source]
+   (let [sched-ref (atom (sorted-map))
+         asap-ref (atom clojure.lang.PersistentQueue/EMPTY)
+         ^Runnable entry-point (partial timer-loop time-source sched-ref asap-ref)
+         th (Thread. entry-point "Limited Downloader download service")
+         service (->RateLimitDownloaderService th sched-ref asap-ref)]
+     (.start th)
+     {::rate-limited-downloader service})))
 
 (defn init
   "Wrap init-service so this can be initted like async-dl. Stopgap until services are properly
