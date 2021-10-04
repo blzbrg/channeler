@@ -20,13 +20,25 @@
     (log/debug "Received command" parsed)
     (text-commands/handle-command context parsed))) ; update state via STM
 
+(defn reply
+  [context conn-sock cmd-res]
+  (let [writer (->> (.getOutputStream conn-sock)
+                    (new java.io.OutputStreamWriter))]
+    (.write writer cmd-res)
+    (.flush writer)))
 
-(defn command-loop
-  [context conn-sock line-reader]
+(defn handle-connection
+  "Handle one or more commands from a connection"
+  [context conn-sock line-reader multiple-commands]
   (if-let [lines (line-loop line-reader)] ; blocking
     ;; handle a command
-    (do (handle-command context lines)
-        (recur context conn-sock line-reader))
+    (let [cmd-res (handle-command context lines)]
+      (if cmd-res
+        (reply context conn-sock cmd-res))
+      (if multiple-commands
+        (recur context conn-sock line-reader multiple-commands)
+        ;; close if we are not waiting for another command
+        (.close conn-sock)))
     ;; conn closed by other end (ie. we received a FIN), we should explicitly close the socket. This
     ;; is needed for when the other end is openbsd-netcat. When openbsd-netcat is run as nc -N, it
     ;; will send a FIN when getting EOF from stdin, but will not exit until it gets a FIN from the
@@ -43,16 +55,20 @@
                          (new java.io.InputStreamReader)
                          (new java.io.BufferedReader))]
     (log/debug "Connected to" (.getRemoteSocketAddress conn-sock))
-    (command-loop context conn-sock line-reader)
+    ;; for now, always disconnect after doing one command. TBD if multiple commands in one session
+    ;; is worth supporting again.
+    (handle-connection context conn-sock line-reader false)
     (recur context listen-sock)))
 
 (defn run-server
   [context port]
-  (let [sock-addr (new java.net.InetSocketAddress "localhost" port)
-        listen-sock (new java.net.ServerSocket)]
-    (.bind listen-sock sock-addr) ; TODO: graceful error handling
-    (log/info "Remote control server listening on" port)
-    (accept-loop context listen-sock)))
+  (try
+    (let [sock-addr (new java.net.InetSocketAddress "localhost" port)
+          listen-sock (new java.net.ServerSocket)]
+      (.bind listen-sock sock-addr) ; TODO: graceful error handling
+      (log/info "Remote control server listening on" port)
+      (accept-loop context listen-sock))
+    (catch Exception e (log/error e))))
 
 (defn init
   [{state :state :as context}]

@@ -27,7 +27,8 @@
   [context {[_ & positional-args] :arguments {per-thread-opts :merge-opts} :options}]
   (if (= (count positional-args) 2)
     (let [[board thread-id] positional-args]
-      (thread-manager/add-thread! context board thread-id per-thread-opts))
+      (thread-manager/add-thread! context board thread-id per-thread-opts)
+      "") ; TODO: real reply value
     (log/error "Expected two positional args to add-thread but got:" positional-args)))
 
 (defn handle-command

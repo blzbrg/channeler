@@ -161,10 +161,16 @@
           (log/error "Could not init" url "because" path "is a file instead of a directory")
           (log/error "Could not init" url "because" path "does not exist"))))))
 
-(defn init-thread
+(defn completed?
+  "Return truthy if no more refreshes for thread are possible (eg. thread is deleted)"
+  [th]
+  (::completed th))
+
+(defn init
+  "Initialize thread. Download the thread, log any issues thereof, and set up state, but do not do any
+  post processing."
   [context board-name thread-id]
   (let [url (thread-url board-name thread-id)]
-    (log/info "Initializing thread" url)
     ;; first, do verifications which don't require fetch
     (if (verify-dir-usable url context)
       ;; then, do the fetch and verify the results
@@ -175,10 +181,16 @@
                        (assoc ::id thread-id
                               ::board board-name
                               ::conf (:conf context)
-                              ::state (:state context)))
-                posts (process-posts context th (th "posts"))]
+                              ::state (:state context)))]
+            (log/info "Initializing thread" url)
             (log/debug "init th" (dissoc th "posts"))
-            (assoc th "posts" posts)))))))
+            th)))))) ; return thread at end
+
+(defn process-current-posts
+  "Process all posts currently in the thread. Meant to be called after init to get ready for
+  thread-loop."
+  [context {posts "posts" :as th}]
+  (assoc th "posts" (process-posts context th posts)))
 
 (defn update-posts
   "Uses side effects to update the passed thread, applying post transforms, and returns the new
@@ -206,15 +218,18 @@
       ;; unchanged since last one
       ::unmodified (do (log/info "Thread unchanged since" (old-thread ::last-modified))
                        (mark-unmodified old-thread))
-      ::not-found nil))) ; thread has 404d
+      ::not-found (assoc old-thread ::completed 404)))) ; thread has 404d
 
-
-(defn thread-loop
-  "Refresh thread, infinitely, inline. Sleeps thread to wait."
+(defn loop-iteration
+  "One cycle around the thread loop: refresh thread and sleep to wait. Return new thread value, or nil
+  if thread is 404."
   [context th]
   (export-thread context th)
   (Thread/sleep (wait-time context th))
   (log/info "Updating" (thread-url th)) ; for now, just use URL to represent thread
-  (if-let [new-th (update-posts context th)]
-    (recur context new-th)
-    (log/info "Thread is 404" (thread-url th))))
+  (let [new-th (update-posts context th)]
+    ;; log 404 if it is completed
+    (if (completed? new-th)
+      (log/info "Thread is 404" (thread-url th)))
+    ;; return new thread at end
+    new-th))
