@@ -24,6 +24,8 @@
       (recur (.header builder name val) (rest headers)))))
 
 (defn request
+  "Perform an HTTP request given URL and `java.net.http.HttpResponse$BodyHandler`. Returns `[response
+  nil] if success or [nil e] where e is the exception thrown during the attempt."
   ([url handler] (request url handler {}))
   ([url handler headers]
    (try
@@ -38,7 +40,9 @@
        [(.send client request handler) nil])
      (catch Exception e [nil e]))))
 
-(defn unwrap-response
+(defn handle-status-code
+  "Take [resp err] and return the same format, converting resp cases into err cases if the status code
+  represents an error downloading."
   [[^java.net.http.HttpResponse resp err]]
   (if err
     [nil err]
@@ -69,14 +73,13 @@
   (log/debug "Downloading request" req)
   ;; TODO: decouple handler and body format (str vs. otherwise) from `download-to-disk?`
   (let [handler (if (download-to-disk? req) (disk-handler req) (string-handler req))
-        [resp err] (request remote handler)]
-    ;; TODO: call unwrap-response ??
+        [resp err] (handle-status-code (request remote handler))]
     (if err
       ;; Use different form when we are logging an exception vs our own error to keep it readable -
       ;; log contains a special case for throwables.
       (if (isa? (type err) Throwable)
-        (log/error "Error downloading" req err)
-        (log/error "Error" err "downloading" req)))
+        (log/error "Error downloading" remote err)
+        (log/error "Error" err "downloading" remote)))
     ;; Maybe respond
     (if (request/expects-response? req)
       (let [response (assoc req ::http-response resp)]
