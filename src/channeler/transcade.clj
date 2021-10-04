@@ -86,3 +86,13 @@
               (update-in [::awaits] disj chan))) ; remove from awaits
         ;; if there are no awaits, we are done
         current-state))))
+
+(defn mark-needed
+  "Mark a map as needing transcading with the given transcade."
+  [transcade m]
+  (assoc m ::needed transcade))
+
+(defn needed?
+  "If a map has been marked with `mark-needed`."
+  [m]
+  (some? (get m ::needed)))

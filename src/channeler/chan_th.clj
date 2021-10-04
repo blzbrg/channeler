@@ -1,8 +1,10 @@
 (ns channeler.chan-th
   (:require [channeler.transcade :as transcade]
             [channeler.config :refer [conf-get]]
+            [channeler.map-tools :as map-tools]
             [clojure.data.json :as json]
             [clojure.walk :as walk]
+            [clojure.data :as data]
             [clojure.core.async :as async]
             [clojure.tools.logging :as log]
             [clojure.java.io :as io]
@@ -233,3 +235,26 @@
       (log/info "Thread is 404" (thread-url th)))
     ;; return new thread at end
     new-th))
+
+(defn post-seq->map
+  "Convert a sequence of posts into a sorted-map mapping post number to post object."
+  [post-seq]
+  (->> post-seq
+       (map (fn [post] [(post "no") post]))
+       (into (sorted-map))))
+
+(defn mapify-thread
+  [thread]
+  (update thread "posts" post-seq->map))
+
+(defn ^:private transcadeable?
+  "Either unsorted or is sorted with keyword keys (sorted cannot mix key types)"
+  [d]
+  ;; TODO: clean this up
+  (or (not (sorted? d))
+      (keyword? (first (keys d)))))
+
+(defn find-transcades
+  [d]
+  (map-tools/find-matching-paths d #(and (transcadeable? %)
+                                         (transcade/needed? %))))
