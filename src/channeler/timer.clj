@@ -49,3 +49,8 @@
 (def sleep-interval-ref
   "Duration, in miliseconds, to sleep between `expire-items` calls."
   (atom 500))
+
+(defn nano-mono-time-source
+  "Monotonic nanoseconds time since JVM start."
+  []
+  (System/nanoTime))
