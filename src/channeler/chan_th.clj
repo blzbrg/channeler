@@ -294,20 +294,22 @@
         (update new-thread "posts" merge new-posts)))))
 
 (defn dispatch-thread-integrate
-  [state thread-agent response]
+  [thread-agent state response]
   (send thread-agent integrate state response))
 
 (defn create
   [ctx [board no]]
   (let [agt (agent {::id no ::board board ::conf (:conf ctx) ::state (:state ctx)})
+        integ-fn (partial dispatch-thread-integrate agt)
         initial-update-req {:channeler.service/service-key
                             :channeler.limited-downloader/rate-limited-downloader
                             :channeler.limited-downloader/download-url
                             (thread-url @agt)
                             :channeler.request/response-dest
-                            (partial dispatch-thread-integrate (::state @agt) agt)}]
+                            (partial integ-fn (::state @agt))}]
     (set-error-handler! agt (fn [_ ex] (println "") (println "Agent error: " ex)))
     (add-watch agt ::request-watch (partial request-watch ctx))
-    (send agt assoc ::self-ref agt :channeler.request/requests {::initial-update initial-update-req})
-    (log/info "Created thread" board no ":" (pr-str (dissoc @agt ::self-ref)))
+    (send agt merge {::self-integration-fn integ-fn
+                     :channeler.request/requests {::initial-update initial-update-req}})
+    (log/info "Created thread" board no ":" (pr-str @agt))
     agt))
