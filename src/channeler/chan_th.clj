@@ -1,5 +1,7 @@
 (ns channeler.chan-th
   (:require [channeler.transcade :as transcade]
+            [channeler.request :as request]
+            [channeler.service :as service]
             [channeler.config :refer [conf-get]]
             [channeler.map-tools :as map-tools]
             [clojure.data.json :as json]
@@ -258,3 +260,54 @@
   [d]
   (map-tools/find-matching-paths d #(and (transcadeable? %)
                                          (transcade/needed? %))))
+
+(defn response->thread-structure
+  [response]
+  (let [^java.net.http.HttpResponse resp (get response :channeler.limited-downloader/http-response)]
+    (-> (.body resp)
+        (json/read-str)
+        (mapify-thread)
+        (assoc ::last-modified (get-header resp "Last-Modified")))))
+
+(defn request-watch
+  [{{service-map :service-map} :state} _ agt old new]
+  (if (not (= old new))
+    (send agt (fn [d] (let [reqs (request/contexify-all-reqs d)]
+                        (service/dispatch-requests-from-context! service-map d reqs)
+                        d)))))
+
+(defn integrate
+  [old-thread {post-transcade :post-transcade} incoming-response]
+  (let [new-thread (response->thread-structure incoming-response) ; TODO: error handling
+        ;; TODO: apply thread-wide transcade
+        [old-only new-only both] (data/diff old-thread new-thread)] ; TODO: will this work when posts change due to transcade?
+    (if (contains? new-only "posts")
+      (let [new-posts (->> (get new-only "posts")
+                           (map second) ; only posts themselves (ignore keys)
+                           ;; TODO: is it really necessary to mark and then transcade? Surely this
+                           ;; can be cleaner.
+                           (map (partial transcade/mark-needed post-transcade)) ; mark new posts
+                           ;; TODO: using the old thread here? Yuck.
+                           (map (partial transcade/needed-inline old-thread)) ; transcade new posts
+                           (map (fn [post] [(get post "no") post])) ; make k-v tuples
+                           (into (sorted-map)))]
+        (update new-thread "posts" merge new-posts)))))
+
+(defn dispatch-thread-integrate
+  [state thread-agent response]
+  (send thread-agent integrate state response))
+
+(defn create
+  [ctx [board no]]
+  (let [agt (agent {::id no ::board board ::conf (:conf ctx) ::state (:state ctx)})
+        initial-update-req {:channeler.service/service-key
+                            :channeler.limited-downloader/rate-limited-downloader
+                            :channeler.limited-downloader/download-url
+                            (thread-url @agt)
+                            :channeler.request/response-dest
+                            (partial dispatch-thread-integrate (::state @agt) agt)}]
+    (set-error-handler! agt (fn [_ ex] (println "") (println "Agent error: " ex)))
+    (add-watch agt ::request-watch (partial request-watch ctx))
+    (send agt assoc ::self-ref agt :channeler.request/requests {::initial-update initial-update-req})
+    (log/info "Created thread" board no ":" (pr-str (dissoc @agt ::self-ref)))
+    agt))

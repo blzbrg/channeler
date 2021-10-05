@@ -96,3 +96,8 @@
   "If a map has been marked with `mark-needed`."
   [m]
   (some? (get m ::needed)))
+
+(defn needed-inline
+  "Like `inline-loop`, but fetch the transcade that was stored with `mark-needed`."
+  [ctx m]
+  (inline-loop (::needed m) ctx m))
