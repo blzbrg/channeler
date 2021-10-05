@@ -106,3 +106,18 @@
                     (get-in [:channeler.request/requests ::chan-th/initial-update])
                     (relevant-req-keys))))
     (test/is (= (list expected-req) (map relevant-req-keys @request-log-ref)))))
+
+(test/deftest initial-integrate-test
+  (let [request-log-ref (atom [])
+        ctx (test-ctx request-log-ref)
+        agt (agent {::chan-th/board "a" ::chan-th/conf (:conf ctx)})
+        original-agt-val @agt] ; original val to simulate watch
+    ;; mock thread parsing so that we can use the preparsed sample
+    (with-redefs [chan-th/response->thread-structure identity]
+      (chan-th/dispatch-thread-integrate agt (:state ctx) {"posts" sample-post-map})
+      (await-for 10000 agt)
+      (chan-th/request-watch ctx ::chan-th/request-watch agt original-agt-val @agt)
+      (await-for 10000 agt)
+      (test/is (= (set ["https://i.4cdn.org/a/1546293948883.png"
+                        "https://i.4cdn.org/a/1546294496751.png"])
+                  (set (map :channeler.limited-downloader/download-url @request-log-ref)))))))
