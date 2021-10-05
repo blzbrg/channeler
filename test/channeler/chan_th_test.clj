@@ -1,6 +1,8 @@
 (ns channeler.chan-th-test
   (:require [channeler.chan-th :as chan-th]
             [channeler.transcade :as transcade]
+            [channeler.service :as service]
+            [channeler.image-download :as image-download]
             [clojure.test :as test]
             [clojure.java.io :as io]
             [clojure.data.json :as json]))
@@ -72,3 +74,35 @@
                           ;; mark with a bogus transcade (just has to be truthy)
                           (update-in ["posts" 570371] (partial transcade/mark-needed true)))]
     (test/is (= (list (list "posts" 570371)) (chan-th/find-transcades marked-post-m)))))
+
+(defrecord MockService [request-log-ref]
+  service/Service
+  (handle-item! [_ item] (swap! request-log-ref conj item))
+  (stop [_] nil))
+
+(defn test-ctx
+  [request-log-ref]
+  {:state {:post-transcade {:transformers (list (image-download/->RequestImageDownload))}
+           :service-map {:channeler.limited-downloader/rate-limited-downloader
+                         (->MockService request-log-ref)}}
+   :conf {"dir" "/tmp/channeler"}})
+
+(defn relevant-req-keys
+  "Relevant keys from a request, eg. leave out anything incomparable like functions."
+  [req]
+  (select-keys req [:channeler.service/service-key :channeler.limited-downloader/download-url]))
+
+(test/deftest create-test
+  (let [request-log-ref (atom [])
+        ctx (test-ctx request-log-ref)
+        agt (chan-th/create ctx ["a" 1])
+        ;; interesting keys of the expected req
+        expected-req {:channeler.service/service-key
+                      :channeler.limited-downloader/rate-limited-downloader
+                      :channeler.limited-downloader/download-url
+                      "https://a.4cdn.org/a/thread/1.json"}]
+    (test/is (= expected-req
+                (-> @agt
+                    (get-in [:channeler.request/requests ::chan-th/initial-update])
+                    (relevant-req-keys))))
+    (test/is (= (list expected-req) (map relevant-req-keys @request-log-ref)))))
