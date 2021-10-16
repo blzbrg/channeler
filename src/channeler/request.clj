@@ -38,7 +38,7 @@
   "Given a map that might contain requests, search for subtrees with request maps. Returns a sequence
   of the paths to those subtrees."
   [d]
-  (map-tools/find-matching-paths d has-request?))
+  (map-tools/deep-matching-paths has-request? d))
 
 (defn contexify-reqs-in-path
   "Given a map and a path to a subtree with requests, return contexified versions of all requests in
