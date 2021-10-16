@@ -85,32 +85,33 @@
   {:state {:post-transcade {:transformers (list (image-download/->RequestImageDownload))}
            :service-map {:channeler.limited-downloader/rate-limited-downloader
                          (->MockService request-log-ref)}}
-   :conf {"dir" "/tmp/channeler"}})
+   :conf {"dir" "/tmp/channeler" "thread" {"min-sec-between-refresh" 10}}})
 
 (defn relevant-req-keys
   "Relevant keys from a request, eg. leave out anything incomparable like functions."
   [req]
   (select-keys req [:channeler.service/service-key :channeler.limited-downloader/download-url]))
 
+(def expected-th-req
+  {:channeler.service/service-key
+   :channeler.limited-downloader/rate-limited-downloader
+   :channeler.limited-downloader/download-url
+   "https://a.4cdn.org/a/thread/1.json"})
+
 (test/deftest create-test
   (let [request-log-ref (atom [])
         ctx (test-ctx request-log-ref)
-        agt (chan-th/create ctx ["a" 1])
-        ;; interesting keys of the expected req
-        expected-req {:channeler.service/service-key
-                      :channeler.limited-downloader/rate-limited-downloader
-                      :channeler.limited-downloader/download-url
-                      "https://a.4cdn.org/a/thread/1.json"}]
-    (test/is (= expected-req
+        agt (chan-th/create ctx ["a" 1])]
+    (test/is (= expected-th-req
                 (-> @agt
                     (get-in [:channeler.request/requests ::chan-th/initial-update])
                     (relevant-req-keys))))
-    (test/is (= (list expected-req) (map relevant-req-keys @request-log-ref)))))
+    (test/is (= (list expected-th-req) (map relevant-req-keys @request-log-ref)))))
 
 (test/deftest initial-integrate-test
   (let [request-log-ref (atom [])
         ctx (test-ctx request-log-ref)
-        agt (agent {::chan-th/board "a" ::chan-th/conf (:conf ctx)})
+        agt (agent {::chan-th/board "a" ::chan-th/id 1 ::chan-th/conf (:conf ctx)})
         original-agt-val @agt] ; original val to simulate watch
     ;; mock thread parsing so that we can use the preparsed sample
     (with-redefs [chan-th/response->thread-structure identity]
@@ -118,6 +119,33 @@
       (await-for 10000 agt)
       (chan-th/request-watch ctx ::chan-th/request-watch agt original-agt-val @agt)
       (await-for 10000 agt)
+      ;; Check for the request for the next refresh to be present
+      (let [req (get-in @agt [:channeler.request/requests ::chan-th/refresh])]
+        (test/is (= expected-th-req (relevant-req-keys req)))
+        (test/is (contains? req :channeler.limited-downloader/time-nano)))
+      ;; Test that the images and refresh were requested
+      ;;
+      ;; TODO: test the refresh delay?
       (test/is (= (set ["https://i.4cdn.org/a/1546293948883.png"
-                        "https://i.4cdn.org/a/1546294496751.png"])
+                        "https://i.4cdn.org/a/1546294496751.png"
+                        "https://a.4cdn.org/a/thread/1.json"])
+                  (set (map :channeler.limited-downloader/download-url @request-log-ref)))))))
+
+(test/deftest refresh-integrate-new-image-test
+  (let [request-log-ref (atom [])
+        ctx (test-ctx request-log-ref)
+        initial-th (-> {::chan-th/board "a" ::chan-th/id 1 ::chan-th/conf (:conf ctx)}
+                       (assoc "posts" (dissoc sample-post-map 570370)))
+        agt (agent initial-th)]
+    ;; mock thread parsing so that we can use the preparsed sample
+    (with-redefs [chan-th/response->thread-structure identity]
+      (chan-th/dispatch-thread-integrate agt (:state ctx) {"posts" sample-post-map})
+      (await-for 1000 agt)
+      (chan-th/request-watch ctx ::chan-th/request-watch agt initial-th @agt)
+      (await-for 10000 agt)
+      ;; Only the three posts should be present now
+      (test/is (= (keys sample-post-map) (keys (get @agt "posts"))))
+      ;; The new image and the next refresh
+      (test/is (= (set ["https://i.4cdn.org/a/1546294496751.png"
+                        "https://a.4cdn.org/a/thread/1.json"])
                   (set (map :channeler.limited-downloader/download-url @request-log-ref)))))))

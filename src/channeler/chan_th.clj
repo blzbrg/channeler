@@ -4,6 +4,7 @@
             [channeler.service :as service]
             [channeler.config :refer [conf-get]]
             [channeler.map-tools :as map-tools]
+            [channeler.timer :as timer]
             [clojure.data.json :as json]
             [clojure.walk :as walk]
             [clojure.data :as data]
@@ -129,9 +130,8 @@
     (min computed-sec max-sec)))
 
 (defn ^:private wait-time
-  [context th]
-  (let [conf (:conf context)
-        base-wait-sec (conf-get conf "thread" "min-sec-between-refresh")
+  [conf th]
+  (let [base-wait-sec (conf-get conf "thread" "min-sec-between-refresh")
         strategy (conf-get conf "thread" "no-new-posts-refresh-backoff" "backoff-strategy")
         sec (if (= "exponential" strategy)
               (exponential-backoff-wait-time conf th base-wait-sec)
@@ -229,7 +229,7 @@
   if thread is 404."
   [context th]
   (export-thread context th)
-  (Thread/sleep (wait-time context th))
+  (Thread/sleep (wait-time (:conf th) th))
   (log/info "Updating" (thread-url th)) ; for now, just use URL to represent thread
   (let [new-th (update-posts context th)]
     ;; log 404 if it is completed
@@ -276,22 +276,40 @@
                         (service/dispatch-requests-from-context! service-map d reqs)
                         d)))))
 
+(defn update-req
+  [th]
+  (let [wait-nanos (-> (wait-time (::conf th) th)
+                       (java.time.Duration/ofMillis)
+                       (.toNanos))]
+    {:channeler.service/service-key
+     :channeler.limited-downloader/rate-limited-downloader
+     :channeler.limited-downloader/download-url
+     (thread-url th)
+     :channeler.limited-downloader/time-nano
+     (+ (timer/nano-mono-time-source) wait-nanos)
+     :channeler.request/response-dest
+     (partial (::self-integration-fn th) (::state th))}))
+
 (defn integrate
   [old-thread {post-transcade :post-transcade} incoming-response]
   (let [new-thread (response->thread-structure incoming-response) ; TODO: error handling
         ;; TODO: apply thread-wide transcade
         [old-only new-only both] (data/diff old-thread new-thread)] ; TODO: will this work when posts change due to transcade?
-    (if (contains? new-only "posts")
-      (let [new-posts (->> (get new-only "posts")
-                           (map second) ; only posts themselves (ignore keys)
-                           ;; TODO: is it really necessary to mark and then transcade? Surely this
-                           ;; can be cleaner.
-                           (map (partial transcade/mark-needed post-transcade)) ; mark new posts
-                           ;; TODO: using the old thread here? Yuck.
-                           (map (partial transcade/needed-inline old-thread)) ; transcade new posts
-                           (map (fn [post] [(get post "no") post])) ; make k-v tuples
-                           (into (sorted-map)))]
-        (update new-thread "posts" merge new-posts)))))
+    (let [new-posts
+          (if (contains? new-only "posts")
+            (->> (get new-only "posts")
+                 (map second) ; only posts themselves (ignore keys)
+                 ;; TODO: is it really necessary to mark and then transcade? Surely this
+                 ;; can be cleaner.
+                 (map (partial transcade/mark-needed post-transcade)) ; mark new posts
+                 ;; TODO: using the old thread here? Yuck.
+                 (map (partial transcade/needed-inline old-thread)) ; transcade new posts
+                 (map (fn [post] [(get post "no") post])) ; make k-v tuples
+                 (into (sorted-map)))
+            (sorted-map))]
+      (-> old-thread
+          (assoc-in [:channeler.request/requests ::refresh] (update-req old-thread))
+          (update "posts" merge new-posts)))))
 
 (defn dispatch-thread-integrate
   [thread-agent state response]
