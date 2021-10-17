@@ -16,7 +16,7 @@
 (defn contexify-req-impl
   [req path-in-context req-key]
   ;; always convert to seq for consistency
-  (assoc req ::path-in-context (seq path-in-context) ::req-key req-key))
+  (assoc req ::path-in-context (sequence path-in-context) ::req-key req-key))
 
 (defn contexified-req
   "Grab a request out of the context and add enough information for the response to be integrated in
@@ -70,7 +70,9 @@
   (let [req-map-path (concat path-in-context [::requests])
         new-ctx (update-in ctx req-map-path dissoc key)]
     ;; potentially remove the empty request map
-    (update-in new-ctx path-in-context maybe-cleanup-reqs)))
+    (if (empty? path-in-context)
+      (maybe-cleanup-reqs new-ctx) ; special case for requests at root
+      (update-in new-ctx path-in-context maybe-cleanup-reqs))))
 
 ;; TODO: Optimize for common case of removing every request
 (defn remove-requests-from-context

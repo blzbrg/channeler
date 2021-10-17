@@ -102,10 +102,7 @@
   (let [request-log-ref (atom [])
         ctx (test-ctx request-log-ref)
         agt (chan-th/create ctx ["a" 1])]
-    (test/is (= expected-th-req
-                (-> @agt
-                    (get-in [:channeler.request/requests ::chan-th/initial-update])
-                    (relevant-req-keys))))
+    (await-for 10000 agt)
     (test/is (= (list expected-th-req) (map relevant-req-keys @request-log-ref)))))
 
 (test/deftest initial-integrate-test
@@ -119,10 +116,6 @@
       (await-for 10000 agt)
       (chan-th/request-watch ctx ::chan-th/request-watch agt original-agt-val @agt)
       (await-for 10000 agt)
-      ;; Check for the request for the next refresh to be present
-      (let [req (get-in @agt [:channeler.request/requests ::chan-th/refresh])]
-        (test/is (= expected-th-req (relevant-req-keys req)))
-        (test/is (contains? req :channeler.limited-downloader/time-nano)))
       ;; Test that the images and refresh were requested
       ;;
       ;; TODO: test the refresh delay?
