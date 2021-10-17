@@ -149,6 +149,7 @@
          ^Runnable entry-point (partial timer-loop time-source sched-ref asap-ref)
          th (Thread. entry-point "Limited Downloader download service")
          service (->RateLimitDownloaderService th sched-ref asap-ref)]
+     (.setDaemon th true)
      (.start th)
      {::rate-limited-downloader service})))
 

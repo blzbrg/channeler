@@ -30,10 +30,14 @@
 
 (defn wait-for-completion
   [handles]
-  (let [completions (map #(get @% ::completed) handles)]
-    (if (every? identity completions)
+  (let [incomplete (->> handles
+                        (map deref)
+                        (filter #(not (chan-th/completed? %))))]
+    (if (empty? incomplete)
       true
-      (do (log/debug "Waiting for" (count (filter not completions)) "threads to complete")
+      (do (log/debug "Waiting for" (map #(select-keys % [::chan-th/board ::chan-th/id]) incomplete)
+                     "to complete")
+          ;; TODO: bad hack
           (Thread/sleep (* 1000 10)) ; 10 seconds
           (recur handles)))))
 
