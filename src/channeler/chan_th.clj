@@ -294,6 +294,7 @@
   (let [new-thread (response->thread-structure incoming-response) ; TODO: error handling
         ;; TODO: apply thread-wide transcade
         [old-only new-only both] (data/diff old-thread new-thread)] ; TODO: will this work when posts change due to transcade?
+    (log/info "Processing" (::board old-thread) (::id old-thread))
     (let [new-posts
           (if (contains? new-only "posts")
             (->> (get new-only "posts")
@@ -328,5 +329,6 @@
     (add-watch agt ::request-watch (partial request-watch ctx))
     (send agt merge {::self-integration-fn integ-fn
                      :channeler.request/requests {::initial-update initial-update-req}})
-    (log/info "Created thread" board no ":" (pr-str @agt))
+    (log/info "Created thread" board no)
+    (log/debug "Created thread" (pr-str @agt))
     agt))
