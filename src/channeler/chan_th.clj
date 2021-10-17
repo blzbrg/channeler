@@ -273,8 +273,7 @@
   [{{service-map :service-map} :state} _ agt old new]
   (if (not (= old new))
     (send agt (fn [d] (let [reqs (request/contexify-all-reqs d)]
-                        (service/dispatch-requests-from-context! service-map d reqs)
-                        d)))))
+                        (service/dispatch-requests-from-context! service-map d reqs))))))
 
 (defn update-req
   [th]
