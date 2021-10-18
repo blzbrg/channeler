@@ -262,12 +262,11 @@
                                          (transcade/needed? %))))
 
 (defn response->thread-structure
-  [response]
-  (let [^java.net.http.HttpResponse resp (get response :channeler.limited-downloader/http-response)]
-    (-> (.body resp)
-        (json/read-str)
-        (mapify-thread)
-        (assoc ::last-modified (get-header resp "Last-Modified")))))
+  [^java.net.http.HttpResponse resp]
+  (-> (.body resp)
+      (json/read-str)
+      (mapify-thread)
+      (assoc ::last-modified (get-header resp "Last-Modified"))))
 
 (defn request-watch
   [{{service-map :service-map} :state} _ agt old new]
@@ -289,27 +288,41 @@
      :channeler.request/response-dest
      (partial (::self-integration-fn th) (::state th))}))
 
+(defn ^:private transcade-new-posts
+  [old-thread post-transcade new-posts]
+  (->> new-posts
+       (map second) ; only posts themselves (ignore keys)
+       (map (partial transcade/inline-loop post-transcade old-thread))
+       (map (fn [post] [(get post "no") post])) ; make k-v tuples
+       (into (sorted-map))))
+
 (defn integrate
-  [old-thread {post-transcade :post-transcade} incoming-response]
-  (let [new-thread (response->thread-structure incoming-response) ; TODO: error handling
-        ;; TODO: apply thread-wide transcade
-        [old-only new-only both] (data/diff old-thread new-thread)] ; TODO: will this work when posts change due to transcade?
-    (log/info "Processing" (::board old-thread) (::id old-thread))
-    (let [new-posts
-          (if (contains? new-only "posts")
-            (->> (get new-only "posts")
-                 (map second) ; only posts themselves (ignore keys)
-                 ;; TODO: is it really necessary to mark and then transcade? Surely this
-                 ;; can be cleaner.
-                 (map (partial transcade/mark-needed post-transcade)) ; mark new posts
-                 ;; TODO: using the old thread here? Yuck.
-                 (map (partial transcade/needed-inline old-thread)) ; transcade new posts
-                 (map (fn [post] [(get post "no") post])) ; make k-v tuples
-                 (into (sorted-map)))
-            (sorted-map))]
-      (-> old-thread
-          (assoc-in [:channeler.request/requests ::refresh] (update-req old-thread))
-          (update "posts" merge new-posts)))))
+  [old-thread state incoming-response]
+  (log/info "Processing" (::board old-thread) (::id old-thread))
+  (let [;; Extract HttpResponse
+        ^java.net.http.HttpResponse resp
+        (get incoming-response :channeler.limited-downloader/http-response)
+        ;; Update `old-thread` based on resp
+        th
+        (case (.statusCode resp)
+          ;; OK
+          200
+          (let [{post-transcade :post-transcade} state
+                new-thread (response->thread-structure resp)
+                ;; TODO: apply thread-wide transcade
+                [old-only new-only both] (data/diff old-thread new-thread)]
+            (let [new-posts (if (contains? new-only "posts")
+                              (transcade-new-posts old-thread post-transcade (get new-only "posts"))
+                              (sorted-map))]
+              (update old-thread "posts" merge new-posts)))
+          ;; Not-Found
+          404
+          (do (log/info "Thread" (::board old-thread) (::id old-thread) "is 404")
+              (assoc old-thread ::completed 404)))]
+    ;; If thread is not done, queue the next refresh.
+    (if (not (completed? th))
+      (assoc-in th [:channeler.request/requests ::refresh] (update-req th))
+      th)))
 
 (defn dispatch-thread-integrate
   [thread-agent state response]

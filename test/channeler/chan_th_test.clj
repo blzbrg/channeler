@@ -80,6 +80,31 @@
   (handle-item! [_ item] (swap! request-log-ref conj item))
   (stop [_] nil))
 
+(defn mock-th
+  [posts]
+  (clojure.data.json/write-str {"posts" (vals posts)}))
+
+(defn mock-http-response
+  [code body-str]
+  (let [always-true-header-filter (reify java.util.function.BiPredicate
+                                    (test [_ _ _] true))]
+    (reify
+      java.net.http.HttpResponse
+      (body [_] body-str)
+      (headers [_]
+        (java.net.http.HttpHeaders/of {"Last-Modified" ["Mon, 1 Jan 2000 10:10:10 GMT"]}
+                                      always-true-header-filter))
+      (previousResponse [_] (java.util.Optional/empty))
+      (request [_] (throw (RuntimeException. "unsupported on mock response")))
+      (sslSession [_] (java.util.Optional/empty))
+      (statusCode [_] code)
+      (uri [_] "")
+      (version [_] java.net.http.HttpClient$Version/HTTP_1_1))))
+
+(defn mock-resp
+  [posts]
+  {:channeler.limited-downloader/http-response (mock-http-response 200 (mock-th posts))})
+
 (defn test-ctx
   [request-log-ref]
   {:state {:post-transcade {:transformers (list (image-download/->RequestImageDownload))}
@@ -110,19 +135,17 @@
         ctx (test-ctx request-log-ref)
         agt (agent {::chan-th/board "a" ::chan-th/id 1 ::chan-th/conf (:conf ctx)})
         original-agt-val @agt] ; original val to simulate watch
-    ;; mock thread parsing so that we can use the preparsed sample
-    (with-redefs [chan-th/response->thread-structure identity]
-      (chan-th/dispatch-thread-integrate agt (:state ctx) {"posts" sample-post-map})
-      (await-for 10000 agt)
-      (chan-th/request-watch ctx ::chan-th/request-watch agt original-agt-val @agt)
-      (await-for 10000 agt)
-      ;; Test that the images and refresh were requested
-      ;;
-      ;; TODO: test the refresh delay?
-      (test/is (= (set ["https://i.4cdn.org/a/1546293948883.png"
-                        "https://i.4cdn.org/a/1546294496751.png"
-                        "https://a.4cdn.org/a/thread/1.json"])
-                  (set (map :channeler.limited-downloader/download-url @request-log-ref)))))))
+    (chan-th/dispatch-thread-integrate agt (:state ctx) (mock-resp sample-post-map))
+    (await-for 10000 agt)
+    (chan-th/request-watch ctx ::chan-th/request-watch agt original-agt-val @agt)
+    (await-for 10000 agt)
+    ;; Test that the images and refresh were requested
+    ;;
+    ;; TODO: test the refresh delay?
+    (test/is (= (set ["https://i.4cdn.org/a/1546293948883.png"
+                      "https://i.4cdn.org/a/1546294496751.png"
+                      "https://a.4cdn.org/a/thread/1.json"])
+                (set (map :channeler.limited-downloader/download-url @request-log-ref))))))
 
 (test/deftest refresh-integrate-new-image-test
   (let [request-log-ref (atom [])
@@ -130,15 +153,13 @@
         initial-th (-> {::chan-th/board "a" ::chan-th/id 1 ::chan-th/conf (:conf ctx)}
                        (assoc "posts" (dissoc sample-post-map 570370)))
         agt (agent initial-th)]
-    ;; mock thread parsing so that we can use the preparsed sample
-    (with-redefs [chan-th/response->thread-structure identity]
-      (chan-th/dispatch-thread-integrate agt (:state ctx) {"posts" sample-post-map})
-      (await-for 1000 agt)
-      (chan-th/request-watch ctx ::chan-th/request-watch agt initial-th @agt)
-      (await-for 10000 agt)
-      ;; Only the three posts should be present now
-      (test/is (= (keys sample-post-map) (keys (get @agt "posts"))))
-      ;; The new image and the next refresh
-      (test/is (= (set ["https://i.4cdn.org/a/1546294496751.png"
-                        "https://a.4cdn.org/a/thread/1.json"])
-                  (set (map :channeler.limited-downloader/download-url @request-log-ref)))))))
+    (chan-th/dispatch-thread-integrate agt (:state ctx) (mock-resp sample-post-map))
+    (await-for 1000 agt)
+    (chan-th/request-watch ctx ::chan-th/request-watch agt initial-th @agt)
+    (await-for 10000 agt)
+    ;; Only the three posts should be present now
+    (test/is (= (keys sample-post-map) (keys (get @agt "posts"))))
+    ;; The new image and the next refresh
+    (test/is (= (set ["https://i.4cdn.org/a/1546294496751.png"
+                      "https://a.4cdn.org/a/thread/1.json"])
+                (set (map :channeler.limited-downloader/download-url @request-log-ref))))))
