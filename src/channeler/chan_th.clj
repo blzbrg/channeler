@@ -265,8 +265,7 @@
   [^java.net.http.HttpResponse resp]
   (-> (.body resp)
       (json/read-str)
-      (mapify-thread)
-      (assoc ::last-modified (get-header resp "Last-Modified"))))
+      (mapify-thread)))
 
 (defn request-watch
   [{{service-map :service-map} :state} _ agt old new]
@@ -278,15 +277,18 @@
   [th]
   (let [wait-nanos (-> (wait-time (::conf th) th)
                        (java.time.Duration/ofMillis)
-                       (.toNanos))]
-    {:channeler.service/service-key
-     :channeler.limited-downloader/rate-limited-downloader
-     :channeler.limited-downloader/download-url
-     (thread-url th)
-     :channeler.limited-downloader/time-nano
-     (+ (timer/nano-mono-time-source) wait-nanos)
-     :channeler.request/response-dest
-     (partial (::self-integration-fn th) (::state th))}))
+                       (.toNanos))
+        req {:channeler.service/service-key
+             :channeler.limited-downloader/rate-limited-downloader
+             :channeler.limited-downloader/download-url
+             (thread-url th)
+             :channeler.limited-downloader/time-nano
+             (+ (timer/nano-mono-time-source) wait-nanos)
+             :channeler.request/response-dest
+             (partial (::self-integration-fn th) (::state th))}]
+    (if-let [last-modified (get th ::last-modified)]
+      (assoc-in req [:channeler.limited-downloader/headers "If-Modified-Since"] last-modified)
+      req)))
 
 (defn ^:private transcade-new-posts
   [old-thread post-transcade new-posts]
@@ -311,15 +313,25 @@
                 new-thread (response->thread-structure resp)
                 ;; TODO: apply thread-wide transcade
                 [old-only new-only both] (data/diff old-thread new-thread)]
+            ;; TODO: this way of updating the thread is complicated, fragile, and hard to understand
             (let [new-posts (if (contains? new-only "posts")
                               (transcade-new-posts old-thread post-transcade (get new-only "posts"))
                               (sorted-map))]
-              (update old-thread "posts" merge new-posts)))
+              (-> old-thread
+                  (assoc ::last-modified (get-header resp "Last-Modified"))
+                  (update "posts" merge new-posts))))
           ;; Not-Found
           404
           (do (log/info "Thread" (::board old-thread) (::id old-thread) "is 404")
-              (assoc old-thread ::completed 404)))]
-    ;; If thread is not done, queue the next refresh.
+              (assoc old-thread ::completed 404))
+          ;; Unmodified
+          304
+          (do (log/info "Thread" (::board old-thread) (::id old-thread) "unchanged since"
+                        (::last-modified old-thread))
+              (mark-unmodified old-thread))
+          ;; Unrecognized status
+          (log/error "Unrecognized status code" (.statusCode resp) "Ignoring this refresh"))]
+    ;; If thread is not done, queue th+e next refresh.
     (if (not (completed? th))
       (assoc-in th [:channeler.request/requests ::refresh] (update-req th))
       th)))

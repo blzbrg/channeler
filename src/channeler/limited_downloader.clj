@@ -61,7 +61,9 @@
   (log/debug "Downloading request" req)
   ;; TODO: decouple handler and body format (str vs. otherwise) from `download-to-disk?`
   (let [handler (if (download-to-disk? req) (disk-handler req) (string-handler req))
-        [resp err] (request remote handler)]
+        [resp err] (if-let [headers (get req ::headers)]
+                     (request remote handler headers)
+                     (request remote handler))]
     (if err
       ;; Use different form when we are logging an exception vs our own error to keep it readable -
       ;; log contains a special case for throwables.

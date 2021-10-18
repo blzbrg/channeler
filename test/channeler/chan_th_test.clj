@@ -174,3 +174,41 @@
     (await-for 10000 agt)
     (test/is (= 404 (::chan-th/completed @agt)))
     (test/is (= (list) (sequence @request-log-ref)))))
+
+(test/deftest cache-headers-test
+  ;; Test that Last-Modified header is stored properly, and If-Modified-Since is sent properly. Then
+  ;; test that 304 is handled correctly.
+  (let [request-log-ref (atom [])
+        ctx (test-ctx request-log-ref)
+        headers-req {:channeler.limited-downloader/headers
+                     {"If-Modified-Since" "Mon, 1 Jan 2000 10:10:10 GMT"}}
+        agt (agent {::chan-th/board "a" ::chan-th/id 1 ::chan-th/conf (:conf ctx)})
+        original-agt-val @agt] ; store to simulate request watch
+    ;; Initial 200 response and watch
+    (chan-th/dispatch-thread-integrate agt (:state ctx) (mock-resp sample-post-map))
+    (await-for 10000 agt)
+    (chan-th/request-watch ctx ::chan-th/request-watch agt original-agt-val @agt)
+    (await-for 10000 agt)
+    ;; Test that the Last-Modified is stored
+    (test/is (= "Mon, 1 Jan 2000 10:10:10 GMT" (::chan-th/last-modified @agt)))
+    ;; Test that the request for the refresh includes the If-Modified-Since
+    (let [[refresh-req] (filter (fn [req] (= (:channeler.limited-downloader/download-url req)
+                                             "https://a.4cdn.org/a/thread/1.json"))
+                                    @request-log-ref)]
+      (test/is (= headers-req (select-keys refresh-req [:channeler.limited-downloader/headers]))))
+    ;; Clear requests
+    (reset! request-log-ref [])
+    ;; Second response and watch, this time a 304
+    (let [int-agt-val @agt] ; intermediate value to simulate the next watch
+      (chan-th/dispatch-thread-integrate agt (:state ctx)
+                                         {:channeler.limited-downloader/http-response
+                                          (mock-http-response 304 "")})
+      (await-for 10000 agt)
+      (chan-th/request-watch ctx ::chan-th/request-watch agt int-agt-val @agt)
+      (await-for 10000 agt)
+      ;; Test that the counter used to drive the exponential backoff has incremented to 1
+      (test/is (= 1 (::chan-th/sequential-unmodified-fetches @agt)))
+      ;; Test that the only request is the refresh
+      ;; TODO: test that the time is larger than the base refresh time
+      (test/is (= (list headers-req) (map #(select-keys % [:channeler.limited-downloader/headers])
+                                          @request-log-ref))))))
