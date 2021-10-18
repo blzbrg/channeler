@@ -163,3 +163,14 @@
     (test/is (= (set ["https://i.4cdn.org/a/1546294496751.png"
                       "https://a.4cdn.org/a/thread/1.json"])
                 (set (map :channeler.limited-downloader/download-url @request-log-ref))))))
+
+(test/deftest first-integ-404-test
+  (let [request-log-ref (atom [])
+        ctx (test-ctx request-log-ref)
+        agt (agent {::chan-th/board "a" ::chan-th/id 1 ::chan-th/conf (:conf ctx)})]
+    (chan-th/dispatch-thread-integrate agt (:state ctx)
+                                       {:channeler.limited-downloader/http-response
+                                        (mock-http-response 404 "")})
+    (await-for 10000 agt)
+    (test/is (= 404 (::chan-th/completed @agt)))
+    (test/is (= (list) (sequence @request-log-ref)))))
