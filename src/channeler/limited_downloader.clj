@@ -40,18 +40,6 @@
        [(.send client request handler) nil])
      (catch Exception e [nil e]))))
 
-(defn handle-status-code
-  "Take [resp err] and return the same format, converting resp cases into err cases if the status code
-  represents an error downloading."
-  [[^java.net.http.HttpResponse resp err]]
-  (if err
-    [nil err]
-    (case (.statusCode resp)
-      200 [resp nil]
-      304 [::unmodified nil]
-      404 [nil ::not-found]
-      [nil [::unknown-status (.statusCode resp)]])))
-
 ;; === Request handling ===
 
 (defn download-to-disk?
@@ -73,7 +61,9 @@
   (log/debug "Downloading request" req)
   ;; TODO: decouple handler and body format (str vs. otherwise) from `download-to-disk?`
   (let [handler (if (download-to-disk? req) (disk-handler req) (string-handler req))
-        [resp err] (handle-status-code (request remote handler))]
+        [resp err] (if-let [headers (get req ::headers)]
+                     (request remote handler headers)
+                     (request remote handler))]
     (if err
       ;; Use different form when we are logging an exception vs our own error to keep it readable -
       ;; log contains a special case for throwables.
@@ -149,6 +139,7 @@
          ^Runnable entry-point (partial timer-loop time-source sched-ref asap-ref)
          th (Thread. entry-point "Limited Downloader download service")
          service (->RateLimitDownloaderService th sched-ref asap-ref)]
+     (.setDaemon th true)
      (.start th)
      {::rate-limited-downloader service})))
 
