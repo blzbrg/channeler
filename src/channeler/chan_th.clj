@@ -93,7 +93,7 @@
   [m]
   (into {} (filter (fn [[k v]] (not (keyword? k))) m)))
 
-(defn ^:private trim-for-export
+(defn trim-for-export
   [coll]
   (walk/prewalk #(if (map? %) (eliminate-symbol-keys %) %) coll))
 
@@ -102,7 +102,7 @@
   (let [fname (str thread-id ".json")]
     (io/file (conf-get (:conf context) "dir") fname)))
 
-(def ^:private write-options
+(def write-options
   (list :escape-unicode false :escape-js-separators false
         :escape-slash false))
 
@@ -273,6 +273,11 @@
     (send agt (fn [d] (let [reqs (request/contexify-all-reqs d)]
                         (service/dispatch-requests-from-context! service-map d reqs))))))
 
+(defn export-watch
+  [ctx _ _ old new]
+  (if (not (= old new))
+    (export-thread ctx new)))
+
 (defn update-req
   [th]
   (let [wait-nanos (-> (wait-time (::conf th) th)
@@ -352,6 +357,7 @@
                             (partial integ-fn (::state @agt))}]
     (set-error-handler! agt (fn [_ ex] (println "") (println "Agent error: " ex)))
     (add-watch agt ::request-watch (partial request-watch ctx))
+    (add-watch agt ::export-watch (partial export-watch ctx))
     (send agt merge {::self-integration-fn integ-fn
                      :channeler.request/requests {::initial-update initial-update-req}})
     (log/info "Created thread" board no)

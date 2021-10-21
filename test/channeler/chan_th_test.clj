@@ -124,11 +124,13 @@
    "https://a.4cdn.org/a/thread/1.json"})
 
 (test/deftest create-test
-  (let [request-log-ref (atom [])
-        ctx (test-ctx request-log-ref)
-        agt (chan-th/create ctx ["a" 1])]
-    (await-for 10000 agt)
-    (test/is (= (list expected-th-req) (map relevant-req-keys @request-log-ref)))))
+  ;; Mock out expor so it is a nop - we do not want the test to write to the fs
+  (with-redefs [chan-th/export-watch (fn [& _] nil)]
+    (let [request-log-ref (atom [])
+          ctx (test-ctx request-log-ref)
+          agt (chan-th/create ctx ["a" 1])]
+      (await-for 10000 agt)
+      (test/is (= (list expected-th-req) (map relevant-req-keys @request-log-ref))))))
 
 (test/deftest initial-integrate-test
   (let [request-log-ref (atom [])
@@ -212,3 +214,25 @@
       ;; TODO: test that the time is larger than the base refresh time
       (test/is (= (list headers-req) (map #(select-keys % [:channeler.limited-downloader/headers])
                                           @request-log-ref))))))
+
+(test/deftest trim-for-export-test
+  (test/is (= {"a" 1 "b" {"c" 2}}
+              (chan-th/trim-for-export {"a" 1 :rem1 "rem1" ::rem2 "rem2"
+                                        "b" {"c" 2 :rem3 "rem3"}}))))
+
+(test/deftest export-thread-test
+  (let [ctx (test-ctx (atom []))
+        agt (agent {::chan-th/board "a" ::chan-th/id 1 ::chan-th/conf (:conf ctx)})
+        original-agt-val @agt ; store to simulate watch
+        string-writer (java.io.StringWriter.)]
+    ;; Initial 200 response and export watch
+    (chan-th/dispatch-thread-integrate agt (:state ctx) (mock-resp sample-post-map))
+    (await-for 10000 agt)
+    (with-redefs [chan-th/export-file (fn [_ _] string-writer)]
+      (chan-th/export-watch ctx ::chan-th/export-watch agt original-agt-val @agt)
+      (await-for 10000 agt))
+    (let [written (-> string-writer
+                      (.getBuffer)
+                      (str))]
+      (test/is (= (apply json/write-str {"posts" sample-post-map} chan-th/write-options)
+                  written)))))
