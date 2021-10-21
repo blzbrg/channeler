@@ -13,15 +13,6 @@
             [clojure.java.io :as io]
             ))
 
-(defn ^:private new-posts
-  [old-posts new-posts]
-  ;; TODO: this is very hacky
-  (drop (count old-posts) new-posts))
-
-(defn ^:private new-posts-from-json
-  [old-posts new-thread-json]
-  (new-posts old-posts (new-thread-json "posts")))
-
 (defn ^:private get-header
   [response header-name]
   (let [val-opt (-> response
@@ -30,64 +21,6 @@
     (if (.isPresent val-opt)
       (.get val-opt)
       nil)))
-
-(def default-fetch-timeout
-  "Unit: seconds"
-  5)
-
-(defn get-and-handle-except
-  "Attempt a GET and catch any exception. Returns [response nil] on success and [nil exception] on
-  error."
-  [url last-modified]
-  (try
-    (let [builder (-> (new java.net.URI url) ; throws UriSyntaxException
-                      (java.net.http.HttpRequest/newBuilder)
-                      ;; if exceeded, send will throw HttpTimeoutException
-                      (.timeout (java.time.Duration/ofSeconds default-fetch-timeout)))
-          final-builder (if last-modified
-                          ;; thows IllegalArgumentException
-                          (.header builder "If-Modified-Since" last-modified)
-                          builder)
-          request (.build final-builder) ;; throws IllegalStateException
-          client (java.net.http.HttpClient/newHttpClient)]
-      ;; throws IoException, InterruptedException, IllegalArgumentException, or SecurityException
-      [(.send client request (java.net.http.HttpResponse$BodyHandlers/ofString)) nil])
-    (catch Exception e [nil e])))
-
-(defn ^:private fetch
-  ([url] (fetch url nil))
-  ([url last-modified]
-   (let [[response exception] (get-and-handle-except url last-modified)]
-     (if response
-       (case (.statusCode response)
-         200 [::fetched
-              (-> (.body response)
-                  (json/read-str)
-                  (assoc ::last-modified (get-header response "Last-Modified")))]
-         304 [::unmodified nil]
-         404 [::not-found nil]
-         [::unsupported-status (.statusCode response)])
-       [::could-not-fetch exception]))))
-
-(defn ^:private post-routine
-  [post-transcade th post]
-  (transcade/coroutine-loop post-transcade th post))
-
-(defn ^:private process-posts
-  "Take posts in json format and process them into our format, by using
-  the post-transcade"
-  [{{post-transcade :post-transcade} :state} th json-posts]
-  (->> json-posts
-       ;; channel for each post (fed by coroutine)
-       (map (partial post-routine post-transcade th))
-       ;; collect into one channel with the results of all the others. Must be vector so that conj
-       ;; used in update will append.
-       ;;
-       ;; The post-routine channel will only contain one item each, so the channel created by map
-       ;; will only contain one item.
-       (async/map vector)
-       ;; block our thread waiting for the channel. This had better not be in a coroutine!
-       (async/<!!)))
 
 (defn ^:private eliminate-symbol-keys
   [m]
@@ -145,98 +78,10 @@
   [th]
   (update th ::sequential-unmodified-fetches (fnil inc 0)))
 
-(defn ^:private verify-fetch
-  [url fetch-kw data]
-  (case fetch-kw
-    ::unsupported-status (log/error "Could not init" url "due to unsupported status" data)
-    ::could-not-fetch (log/error data "Could not fetch" url "due to network error")
-    ::unmodified (log/error "Could not init" url "due to nonsensical cache response: got 304"
-                   "Unmodified when we didn't send If-Modified-Since")
-    ::not-found (log/error "Could not init" url "because got 404 Not Found")
-    ::fetched true))
-
-(defn ^:private verify-dir-usable
-  [url context]
-  (let [dir-file (io/file (conf-get (:conf context) "dir"))]
-    (if (.isDirectory dir-file)
-      true
-      (let [path (.getPath dir-file)]
-        (if (.exists dir-file)
-          (log/error "Could not init" url "because" path "is a file instead of a directory")
-          (log/error "Could not init" url "because" path "does not exist"))))))
-
 (defn completed?
   "Return truthy if no more refreshes for thread are possible (eg. thread is deleted)"
   [th]
   (::completed th))
-
-(defn init
-  "Initialize thread. Download the thread, log any issues thereof, and set up state, but do not do any
-  post processing."
-  [context board-name thread-id]
-  (let [url (thread-url board-name thread-id)]
-    ;; first, do verifications which don't require fetch
-    (if (verify-dir-usable url context)
-      ;; then, do the fetch and verify the results
-      (let [[fetch-kw data] (fetch url)]
-        (if (verify-fetch url fetch-kw data)
-          ;; if the fetch succeeded, handle contents
-          (let [th (-> data
-                       (assoc ::id thread-id
-                              ::board board-name
-                              ::conf (:conf context)
-                              ::state (:state context)))]
-            (log/info "Initializing thread" url)
-            (log/debug "init th" (dissoc th "posts"))
-            th)))))) ; return thread at end
-
-(defn process-current-posts
-  "Process all posts currently in the thread. Meant to be called after init to get ready for
-  thread-loop."
-  [context {posts "posts" :as th}]
-  (assoc th "posts" (process-posts context th posts)))
-
-(defn update-posts
-  "Uses side effects to update the passed thread, applying post transforms, and returns the new
-  version"
-  [context {old-posts "posts" :as old-thread}]
-  (let [url (thread-url old-thread)
-        [fetch-kw data] (fetch url (old-thread ::last-modified))]
-    (case fetch-kw
-      ::fetched (let [raw-new-posts (new-posts-from-json old-posts data)]
-                  (if (empty? raw-new-posts)
-                    ;; thread unchanged
-                    (mark-unmodified old-thread)
-                    ;; process new posts
-                    (assoc old-thread
-                           "posts" (->> raw-new-posts
-                                        (process-posts context old-thread)
-                                        ;; conj in each new post. Appends as long as old posts is vec
-                                        (into old-posts))
-                           ::sequential-unmodified-fetches 0)))
-      ::unsupported-status (do (log/error "Unsupported status" data "when refreshing" url
-                                          "- treating as unchanged")
-                               old-thread)
-      ::could-not-fetch (do (log/error data "Network error refreshing" url "- treating as unchanged")
-                            old-thread)
-      ;; unchanged since last one
-      ::unmodified (do (log/info "Thread unchanged since" (old-thread ::last-modified))
-                       (mark-unmodified old-thread))
-      ::not-found (assoc old-thread ::completed 404)))) ; thread has 404d
-
-(defn loop-iteration
-  "One cycle around the thread loop: refresh thread and sleep to wait. Return new thread value, or nil
-  if thread is 404."
-  [context th]
-  (export-thread context th)
-  (Thread/sleep (wait-time (:conf th) th))
-  (log/info "Updating" (thread-url th)) ; for now, just use URL to represent thread
-  (let [new-th (update-posts context th)]
-    ;; log 404 if it is completed
-    (if (completed? new-th)
-      (log/info "Thread is 404" (thread-url th)))
-    ;; return new thread at end
-    new-th))
 
 (defn post-seq->map
   "Convert a sequence of posts into a sorted-map mapping post number to post object."
