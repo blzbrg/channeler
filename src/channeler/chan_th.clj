@@ -14,7 +14,7 @@
             ))
 
 (defn ^:private get-header
-  [response header-name]
+  [^java.net.http.HttpResponse response header-name]
   (let [val-opt (-> response
                     (.headers)
                     (.firstValue header-name))]
