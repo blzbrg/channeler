@@ -22,9 +22,9 @@
         downloaded-reqs (atom [])
         asap {::dl/download-url "http://a.b/asap"}
         timed {::dl/download-url "http://a.b/timed" ::dl/time-nano 0}]
-    (with-redefs [dl/ms-between-download 100
-                  dl/download-req! (fn [req] (swap! downloaded-reqs conj req))]
-      (let [{svc ::dl/rate-limited-downloader} (dl/init-service {} mock-time-fn)]
+    (with-redefs [dl/download-req! (fn [req] (swap! downloaded-reqs conj req))]
+      (let [mock-ctx {:conf [{"network-rate-limit" {"min-sec-between-downloads" 0.1}}]}
+            {svc ::dl/rate-limited-downloader} (dl/init-service mock-ctx mock-time-fn)]
         (service/handle-item! svc timed)
         (service/handle-item! svc asap)
         ;; There is no way to know which request will be dequeued first, because the thread loop is

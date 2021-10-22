@@ -3,10 +3,9 @@
   (:require [channeler.timer :as timer]
             [channeler.service :as service]
             [channeler.request :as request]
+            [channeler.config :refer [conf-get]]
             [clojure.java.io :as io]
             [clojure.tools.logging :as log]))
-
-(def ms-between-download 1000)
 
 ;; === Work with HTTP ===
 
@@ -97,7 +96,7 @@
       nil)))
 
 (defn timer-loop
-  [time-source schedule-ref asap-ref]
+  [ms-between-download time-source schedule-ref asap-ref]
   (loop [queue clojure.lang.PersistentQueue/EMPTY]
     (let [exp-q (queue-expiring schedule-ref queue (time-source))]
       ;; If there is something in the queue (items that came from sched-ref) download it. If not,
@@ -136,7 +135,13 @@
   ([ctx time-source]
    (let [sched-ref (atom (sorted-map))
          asap-ref (atom clojure.lang.PersistentQueue/EMPTY)
-         ^Runnable entry-point (partial timer-loop time-source sched-ref asap-ref)
+         sec-between-download (conf-get (:conf ctx)
+                                        "network-rate-limit" "min-sec-between-downloads")
+         ;; No less than 100ms, to put an upper limit on how much CPU can be burnt by the tight
+         ;; loop. This also puts an upper limit on the accuracy of expiry.
+         ms-between-download (min (* 1000 sec-between-download) 100)
+         ^Runnable entry-point (partial timer-loop ms-between-download time-source sched-ref
+                                        asap-ref)
          th (Thread. entry-point "Limited Downloader download service")
          service (->RateLimitDownloaderService th sched-ref asap-ref)]
      (.setDaemon th true)
