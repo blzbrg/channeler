@@ -7,7 +7,6 @@
             [channeler.timer :as timer]
             [clojure.data.json :as json]
             [clojure.walk :as walk]
-            [clojure.data :as data]
             [clojure.core.async :as async]
             [clojure.tools.logging :as log]
             [clojure.java.io :as io]
@@ -162,10 +161,17 @@
           (let [{post-transcade :post-transcade} state
                 new-thread (response->thread-structure resp)
                 ;; TODO: apply thread-wide transcade
-                [old-only new-only both] (data/diff old-thread new-thread)]
+                ;; Post IDs which are in the new thread but not the old
+                new-post-ids (clojure.set/difference (set (keys (get new-thread "posts")))
+                                                     (set (keys (get old-thread "posts"))))]
             ;; TODO: this way of updating the thread is complicated, fragile, and hard to understand
-            (let [new-posts (if (contains? new-only "posts")
-                              (transcade-new-posts old-thread post-transcade (get new-only "posts"))
+            ;;
+            ;; TODO: support updating existing posts. For example, the first post contains some
+            ;; thread stats, which we never update.
+            (let [new-posts (if (not-empty new-post-ids)
+                              (transcade-new-posts old-thread post-transcade
+                                                   (select-keys (get new-thread "posts")
+                                                                new-post-ids))
                               (sorted-map))]
               (-> old-thread
                   (assoc ::last-modified (get-header resp "Last-Modified"))
@@ -190,6 +196,11 @@
   [thread-agent state response]
   (send thread-agent integrate state response))
 
+(defn th-error-handler
+  [agt ex]
+  (log/error "Agent error: " ex)
+  (log/debug "Failed th was:"  (pr-str @agt)))
+
 (defn create
   [ctx [board no]]
   (let [agt (agent {::id no ::board board ::conf (:conf ctx) ::state (:state ctx)})
@@ -200,7 +211,7 @@
                             (thread-url @agt)
                             :channeler.request/response-dest
                             (partial integ-fn (::state @agt))}]
-    (set-error-handler! agt (fn [_ ex] (println "") (println "Agent error: " ex)))
+    (set-error-handler! agt error-handler)
     (add-watch agt ::request-watch (partial request-watch ctx))
     (add-watch agt ::export-watch (partial export-watch ctx))
     (send agt merge {::self-integration-fn integ-fn

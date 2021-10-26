@@ -38,12 +38,22 @@
                "replies" 2
                "images" 2
                "unique_ips" 1}
+              ;; TODO: the tim and time vals are actually not correct
               570370
-              {"no" 570370
-               "now" "12/31/18(Mon)17:14:56"
+              {"no" 570370,
+               "now" "12/31/18(Mon)17:14:00"
                "name" "Anonymous"
                "com" "second post body"
-               "filename" "second_post_filename"
+               "tim" 1546294889019
+               "time" 1546294889
+               "resto" 570368
+               "capcode" "mod"}
+              570371
+              {"no" 570371
+               "now" "12/31/18(Mon)17:15:00"
+               "name" "Anonymous"
+               "com" "third post body"
+               "filename" "third_post_filename"
                "ext" ".png"
                "w" 318
                "h" 704
@@ -54,16 +64,14 @@
                "md5" "0EqXBb4gGIyzQiaApMdFAA=="
                "fsize" 285358
                "resto" 570368
-               "capcode" "mod"}
-              570371
-              {"no" 570371,
-               "now" "12/31/18(Mon)17:21:29"
-               "name" "Anonymous"
-               "com" "third post body"
-               "tim" 1546294889019
-               "time" 1546294889
-               "resto" 570368
                "capcode" "mod"}))
+
+(def sample-post-map-first-two
+  ;; Note that the OP changes when the rest of the thread changes!
+  (-> sample-post-map
+      (dissoc 570371)
+      (update-in [10 "replies"] dec)
+      (update-in [10 "images"] dec)))
 
 (test/deftest post-seq->map-test
   (test/is (= (chan-th/post-seq->map (sample-data "posts")) sample-post-map)))
@@ -153,7 +161,7 @@
   (let [request-log-ref (atom [])
         ctx (test-ctx request-log-ref)
         initial-th (-> {::chan-th/board "a" ::chan-th/id 1 ::chan-th/conf (:conf ctx)}
-                       (assoc "posts" (dissoc sample-post-map 570370)))
+                       (assoc "posts" sample-post-map-first-two))
         agt (agent initial-th)]
     (chan-th/dispatch-thread-integrate agt (:state ctx) (mock-resp sample-post-map))
     (await-for 1000 agt)
@@ -216,9 +224,9 @@
                                           @request-log-ref))))))
 
 (test/deftest trim-for-export-test
-  (test/is (= {"a" 1 "b" {"c" 2}}
+  (test/is (= {"a" 1 "b" {"c" (sorted-map 1 :a 2 :b)}}
               (chan-th/trim-for-export {"a" 1 :rem1 "rem1" ::rem2 "rem2"
-                                        "b" {"c" 2 :rem3 "rem3"}}))))
+                                        "b" {"c" (sorted-map 1 :a 2 :b) :rem3 "rem3"}}))))
 
 (test/deftest export-thread-test
   (let [ctx (test-ctx (atom []))
