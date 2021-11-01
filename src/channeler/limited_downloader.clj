@@ -3,10 +3,9 @@
   (:require [channeler.timer :as timer]
             [channeler.service :as service]
             [channeler.request :as request]
+            [channeler.config :refer [conf-get]]
             [clojure.java.io :as io]
             [clojure.tools.logging :as log]))
-
-(def ms-between-download 1000)
 
 ;; === Work with HTTP ===
 
@@ -96,26 +95,47 @@
       (peek old) ;; return what was popped
       nil)))
 
+(def min-sleep-ms
+  "Minimum time to sleep in the timer loop. This is effectively the granularity at which
+  `ms-between-download` is checked."
+  500)
+
+(defn timer-loop-dequeue-and-selection
+  [now old-queue schedule-ref asap-ref]
+  (let [new-queue (queue-expiring schedule-ref old-queue now)]
+    ;; If there is something in the queue (items that came from sched-ref) download it. If not, try
+    ;; to take an item from asap-ref.
+    [new-queue
+     (if-let [it (peek new-queue)]
+       it
+       (maybe-pop-from-ref! asap-ref))]))
+
 (defn timer-loop
-  [time-source schedule-ref asap-ref]
+  [sec-between-download time-source stop-ref schedule-ref asap-ref]
   (loop [queue clojure.lang.PersistentQueue/EMPTY]
-    (let [exp-q (queue-expiring schedule-ref queue (time-source))]
-      ;; If there is something in the queue (items that came from sched-ref) download it. If not,
-      ;; try to take an item from asap-ref.
-      (if-let [item (if-let [it (peek exp-q)]
-                      it
-                      (maybe-pop-from-ref! asap-ref))]
+    (let [now (time-source)
+          [exp-q item] (timer-loop-dequeue-and-selection now queue schedule-ref asap-ref)]
+      (if item
         (download-req! item))
-      ;; Wait for ratelimit
+      ;; Wait until minimum time for ratelimit has passed.
       ;;
-      ;; TODO: this should really be integrated with time-source rather than relying on sleep
-      ;; times. This would additonally allow timer times with more precision than
-      ;; `ms-between-download`.
-      (Thread/sleep ms-between-download)
-      ;; Repeat
-      ;;
-      ;; TODO: allow orderly exit
-      (recur (safe-pop exp-q)))))
+      ;; Checking the time-source rather than using sleep for timing has two advantages:
+      ;; 1. We do not count on the accuracy of sleep.
+      ;; 2. time-source can be mocked (or, theoretically, used in prod differently) without
+      ;;    replacing sleep.
+      (let [target-time (+ now (-> sec-between-download
+                                   (java.time.Duration/ofSeconds)
+                                   (.toNanos)))]
+        (loop []
+          (when (< (time-source) target-time)
+            (Thread/sleep min-sleep-ms)
+            (recur)))
+        ;; Check stop-ref to see if we need to stop. If not, repeat.
+        ;;
+        ;; Other values of stop-ref could be used in the future to eg. stop after draining
+        ;; everything in exp-q.
+        (if (not (and (realized? stop-ref) (= ::next-yield @stop-ref)))
+          (recur (safe-pop exp-q)))))))
 
 ;; === Service ===
 
@@ -125,20 +145,25 @@
     (timer/schedule sched-ref (::time-nano item) item) ;; schedule item
     (swap! asap-ref conj item))) ;; put item into asap-ref
 
-(defrecord RateLimitDownloaderService [thread sched-ref asap-ref]
+(defrecord RateLimitDownloaderService [^Thread thread stop-ref sched-ref asap-ref]
   service/Service
   (handle-item! [this item] (handle-item sched-ref asap-ref item))
-  (stop [this] nil)) ;; TODO TODO TODO
+  (stop [this] (do (deliver stop-ref ::next-yield)
+                   (.interrupt thread)))) ; break out of sleep
 
 (defn init-service
   ;; time source can be passed to replace System/nanoTime with a mock for virtual time in tests.
   ([ctx] (init-service ctx timer/nano-mono-time-source))
   ([ctx time-source]
-   (let [sched-ref (atom (sorted-map))
+   (let [stop-ref (promise)
+         sched-ref (atom (sorted-map))
          asap-ref (atom clojure.lang.PersistentQueue/EMPTY)
-         ^Runnable entry-point (partial timer-loop time-source sched-ref asap-ref)
+         sec-between-download (conf-get (:conf ctx)
+                                        "network-rate-limit" "min-sec-between-downloads")
+         ^Runnable entry-point (partial timer-loop sec-between-download time-source stop-ref
+                                        sched-ref asap-ref)
          th (Thread. entry-point "Limited Downloader download service")
-         service (->RateLimitDownloaderService th sched-ref asap-ref)]
+         service (->RateLimitDownloaderService th stop-ref sched-ref asap-ref)]
      (.setDaemon th true)
      (.start th)
      {::rate-limited-downloader service})))
