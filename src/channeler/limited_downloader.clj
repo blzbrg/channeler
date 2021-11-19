@@ -148,8 +148,7 @@
 (defrecord RateLimitDownloaderService [^Thread thread stop-ref sched-ref asap-ref]
   service/Service
   (handle-item! [this item] (handle-item sched-ref asap-ref item))
-  (stop [this] (do (deliver stop-ref ::next-yield)
-                   (.interrupt thread)))) ; break out of sleep
+  (stop [this] (deliver stop-ref ::next-yield)))
 
 (defn init-service
   ;; time source can be passed to replace System/nanoTime with a mock for virtual time in tests.
