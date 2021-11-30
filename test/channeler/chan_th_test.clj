@@ -7,6 +7,8 @@
             [clojure.java.io :as io]
             [clojure.data.json :as json]))
 
+;; Note that verify-dir-usable and verify-potential-thread are tested in thread-manager-test
+
 (def sample-data
   (-> "three_post_sample.json"
       (io/resource)

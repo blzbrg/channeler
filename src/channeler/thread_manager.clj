@@ -18,9 +18,15 @@
   eg. wait-for-completion."
   [context board-name thread-id]
   (if (thread-present? board-name thread-id)
+    ;; Ignore thread if we already have it
     (log/info "Ignoring" board-name "thread" thread-id "because it is already in the system")
-    (let [th-ref (chan-th/create context [board-name thread-id])]
-      (swap! thread-handles assoc [board-name thread-id] th-ref))))
+    (let [[ok err] (chan-th/verify-potential-thread context [board-name thread-id])]
+      (if err
+        ;; Reject thread if the thread verification rejects it
+        (log/error "Ignoring" board-name "thread" thread-id "because" err)
+        ;; Checks passed, creater the thread
+        (let [th-ref (chan-th/create context [board-name thread-id])]
+          (swap! thread-handles assoc [board-name thread-id] th-ref))))))
 
 (defn add-thread!
   "Spawn thread and return handle (see spawn-thread!), optionally adding per-thread config."

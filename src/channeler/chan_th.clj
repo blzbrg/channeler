@@ -21,6 +21,26 @@
       (.get val-opt)
       nil)))
 
+(defn verify-dir-usable
+  "Return `false` if file exists, is dir, and is writeable, otherwise return an error message."
+  [^java.io.File dir-file]
+  (let [dir-path (delay (.getAbsolutePath dir-file))]
+    (cond
+      (not (.exists dir-file)) (str @dir-path " does not exist")
+      (not (.isDirectory dir-file)) (str @dir-path " is not a directory")
+      (not (.canWrite dir-file)) (str @dir-path " is not writeable")
+      :else false)))
+
+(defn verify-potential-thread
+  "Verify a thread before creating it. Returns [true nil] on successful verification or [nil
+  error-message] on failure."
+  [context [_ _]]
+  ;; Verify the filesystem destination
+  (let [dir (conf-get (:conf context) "dir")]
+    (if-let [maybe-err (verify-dir-usable (io/file dir))]
+      [nil maybe-err]
+      [true nil])))
+
 (defn ^:private eliminate-symbol-keys
   [m]
   (into {} (filter (fn [[k v]] (not (keyword? k))) m)))
