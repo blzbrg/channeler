@@ -21,6 +21,55 @@
       (.get val-opt)
       nil)))
 
+(defn verify-dir-usable
+  "Return `false` if file exists, is dir, and is writeable, otherwise return an error message."
+  [^java.io.File dir-file]
+  (let [dir-path (delay (.getAbsolutePath dir-file))]
+    (cond
+      (not (.exists dir-file)) (str @dir-path " does not exist")
+      (not (.isDirectory dir-file)) (str @dir-path " is not a directory")
+      (not (.canWrite dir-file)) (str @dir-path " is not writeable")
+      :else false)))
+
+(defn first-extant-file
+  "Given a file, return the first item that exists, starting at that file and moving up the directory
+  tree, or `nil` if none exist."
+  [^java.io.File input-file]
+  (loop [file input-file]
+    (if (.exists file)
+      ;; Base case: this file exists
+      file
+      (if-let [parent (.getParentFile file)]
+        ;; Recursive case: examine parent
+        (recur parent)
+        ;; Base case: no parents exist
+        nil))))
+
+(defn verify-one-usable-parent
+  "Return `false` if one of the parents of `input-file` is usable according to `verify-dir-usable`,
+  otherwiswe return an error message."
+  [^java.io.File input-file]
+  (if-let [first-extant (first-extant-file input-file)]
+    ;; The first parent that exists needs to be usable (so we can create all the dirs in between)
+    (verify-dir-usable first-extant)
+    ;; If no parent exists, verification fails
+    ;;
+    ;; TODO: can this be tested?
+    (str "no parent of " (.getAbsolutePath input-file) "exists")))
+
+(defn verify-potential-thread
+  "Verify a thread before creating it. Returns [true nil] on successful verification or [nil
+  error-message] on failure."
+  [context [_ _]]
+  ;; Verify the filesystem destination
+  (let [dir (io/file (conf-get (:conf context) "dir"))
+        maybe-err (if-let [create-missing-dirs (conf-get (:conf context) "create-missing-parents")]
+                    (verify-one-usable-parent dir)
+                    (verify-dir-usable dir))]
+    (if maybe-err
+      [nil maybe-err]
+      [true nil])))
+
 (defn ^:private eliminate-symbol-keys
   [m]
   (into {} (filter (fn [[k v]] (not (keyword? k))) m)))
@@ -201,6 +250,15 @@
   (log/error "Agent error: " ex)
   (log/debug "Failed th was:"  (pr-str @agt)))
 
+(defn maybe-create-dirs
+  "If configured to do so, create any dirs and parents of the thread's output dir."
+  [th]
+  (if (conf-get (::conf th) "create-missing-parents")
+    (let [dir (conf-get (::conf th) "dir")]
+      (if (.mkdirs (io/as-file dir))
+        (log/debug "Created all parents for" dir)
+        (log/error "Failed to create all parents for" dir)))))
+
 (defn create
   [ctx [board no]]
   (let [agt (agent {::id no ::board board ::conf (:conf ctx) ::state (:state ctx)})
@@ -214,6 +272,7 @@
     (set-error-handler! agt error-handler)
     (add-watch agt ::request-watch (partial request-watch ctx))
     (add-watch agt ::export-watch (partial export-watch ctx))
+    (maybe-create-dirs @agt)
     (send agt merge {::self-integration-fn integ-fn
                      :channeler.request/requests {::initial-update initial-update-req}})
     (log/info "Created thread" board no)
