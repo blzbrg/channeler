@@ -82,6 +82,17 @@
                                          " is not writeable"))
                    "cannot be used as dir")
           (test/is (= @creates (list)) "does not result in a creation call")))
+      ;; Subdir of read-only dir cannot be created
+      (log-test/with-log
+        (test/testing "Un-createable subdir (create-missing-parents)"
+          (let [ro-subdir-path (.getAbsolutePath (io/file ro-dir "uncreatable-subdir"))]
+            (spawn-thread! (assoc-in (dir-mock-ctx ro-subdir-path)
+                                     [:conf "create-missing-parents"] true)
+                           "abc" 1)
+            (test/is (verify-only-log (log-test/the-log) 'channeler.thread-manager :error
+                                      #"is not writeable")
+                     "cannot be used as dir")
+            (test/is (= @creates (list)) "does not result in a creation call"))))
       ;; Otherwise, dir can be used
       (log-test/with-log
         (test/testing "Normal dir"
