@@ -2,6 +2,7 @@
   (:require [clojure.test :as test]
             [clojure.java.io :as io]
             [channeler.thread-manager]
+            [channeler.config :as config]
             [channeler.test-lib :as test-lib]
             [clojure.data.json :as json]
             [channeler.config-reload :as config-reload]))
@@ -46,6 +47,8 @@
         call-atom (atom (list))]
     (with-redefs [channeler.thread-manager/add-thread!
                   (partial generic-mock call-atom 'channeler.thread-manager/add-thread!)
+                  channeler.thread-manager/reconfigure-thread!
+                  (partial generic-mock call-atom 'channeler.thread-manager/reconfigure-thread!)
                   channeler.thread-manager/thread-present?
                   (fn [board thread] (thread-added? @call-atom board thread))]
       (let [conf-file (io/file dir "conf1.json")
@@ -55,4 +58,19 @@
           (write-json conf-file {"board" "b" "thread" 1 "dir" (.getAbsolutePath dir)})
           (test/is (= true (test-lib/wait-for #(not-empty @call-atom) 2000)))
           (test/is (= 1 (count (query @call-atom ['channeler.thread-manager/add-thread!
-                                                  :dontcare "b" 1])))))))))
+                                                  :dontcare "b" 1]))))
+          ;; Every file creation comes with a CREATE and MODIFY event. We don't need both, but
+          ;; empirically this is how they show up on linux, so encode it in the test.
+          (test/is (= 1 (count (query @call-atom
+                                      ['channeler.thread-manager/reconfigure-thread! "b" 1])))))
+        (test/testing "Reconfigure thread - change dir and check for a reconfigure call"
+          (reset! call-atom (list))
+          (let [new-path (.getAbsolutePath (io/file dir "newdir"))]
+            (write-json conf-file {"board" "b" "thread" 1 "dir" new-path})
+            (test/is (test-lib/wait-for #(not-empty @call-atom) 2000))
+            (let [reconf-calls (query @call-atom
+                                      ['channeler.thread-manager/reconfigure-thread! "b" 1])
+                  [reconf & rest] reconf-calls ; get the first reconfigure-thread! call
+                  [_ _ _ new-conf] reconf] ; get new conf from reconfigure-thread! call
+              (test/is (empty? rest)) ; first reconfigure-thread! call should be the only one
+              (test/is (= new-path (new-conf "dir"))))))))))

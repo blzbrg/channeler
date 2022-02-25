@@ -50,20 +50,22 @@
         events (.pollEvents key)]
     (.reset key) ; tell the watch service that we have consumed all the events from this key
     (for [^java.nio.file.WatchEvent event events]
-      (let [^java.nio.file.Path relative (.context event)] ; Get relative path
-        (.toFile (.resolve watched-dir-p relative)))))) ; Get file for aboslute path
+      (do (log/debug "Key" (.watchable key) "gives event" (.context event)
+                     "with count" (.count event) "and kind" (.kind event))
+          (let [^java.nio.file.Path relative (.context event)] ; Get relative path
+            (.toFile (.resolve watched-dir-p relative))))))) ; Get file for aboslute path
 
 (defn handle-changed!
   [context ^java.io.File changed-file]
-  (log/debug "Updating config in" (.getPath changed-file))
+  (log/debug "handle-changed for" (.getPath changed-file))
   (let [[conf err] (maybe-conf changed-file)]
     (if conf
       ;; If conf is valid, process it.
       (let [{board "board" thread "thread"} conf]
         (if (thread-manager/thread-present? board thread)
-          ;; If thread is present, ignore it
-          (log/info "Ignoring" (.getPath changed-file) "because thread" board thread
-                    "is already in system")
+          ;; If thread is present, reconfigure it
+          (do (log/info "Config" (.getCanonicalPath changed-file) "is UPDATED, reconfiguring thread")
+              (thread-manager/reconfigure-thread! board thread conf))
           ;; If thread is new, add it
           (do (log/info "Config" (.getCanonicalPath changed-file) "is NEW, creating thread")
               (thread-manager/add-thread! context board thread conf))))

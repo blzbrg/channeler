@@ -56,6 +56,11 @@
   (cons additional-conf
         (if (seq? baseline-conf) baseline-conf (list baseline-conf))))
 
+(defn replace-conf-head
+  "Given a config seq, replace the first config with a new one"
+  [[_ & rest] new-head]
+  (cons new-head rest))
+
 (defn incorporate-cli-options
   [conf {merge-opts :merge-opts}]
   (conf-seq conf merge-opts))
