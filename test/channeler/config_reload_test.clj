@@ -34,15 +34,23 @@
   [call-seq pattern]
   (filter #(seq-matches? pattern %) call-seq))
 
+(defn thread-added?
+  [call-seq target-board target-thread]
+  (not-empty
+   (query call-seq ['channeler.thread-manager/add-thread! :dontcare target-board target-thread])))
+
 (test/deftest watch-and-handle-test
   (let [dir (test-lib/tmp-dir)
         context {:conf {"dir" (.getAbsolutePath dir)
                         "thread-conf-dir" (.getAbsolutePath dir)}}
         call-atom (atom (list))]
     (with-redefs [channeler.thread-manager/add-thread!
-                  (partial generic-mock call-atom 'channeler.thread-manager/add-thread!)]
+                  (partial generic-mock call-atom 'channeler.thread-manager/add-thread!)
+                  channeler.thread-manager/thread-present?
+                  (fn [board thread] (thread-added? @call-atom board thread))]
       (let [conf-file (io/file dir "conf1.json")
             watch-thread (config-reload/init context)]
+        ;; TODO: test incomplete config and non-file...how do we do this in a non-racey manner?
         (test/testing "Write complete config - this should cause an add"
           (write-json conf-file {"board" "b" "thread" 1 "dir" (.getAbsolutePath dir)})
           (test/is (= true (test-lib/wait-for #(not-empty @call-atom) 2000)))

@@ -5,20 +5,43 @@
             [clojure.tools.logging :as log]
             [clojure.java.io :as io]))
 
+(defn verify-conf-acceptable
+  "Return `false` if `conf` contains an acceptable config, otherwise an error describing the reason
+  it is unacceptable. `path` is the path from which the conf was loaded."
+  [conf path]
+  (let [prefix (str "Config " path)
+        mk (fn [key] (str prefix " missing key \"" key "\""))]
+    (if (nil? conf)
+      (str prefix " could not be parsed as JSON") ; TODO: communicate exception?
+      (condp (fn [key conf] (not (contains? conf key))) conf
+        "board" (mk "board")
+        "thread" (mk "thread")
+        "dir" (mk "dir")
+        false))))
+
+(defn maybe-conf
+  "If `file` contains a valid config, return `[conf ...]`, otherwise return `[false error-message]`."
+  [^java.io.File file]
+  ;; json-str->config gives nil when it fails to parse, so incomplete/invalid JSON is fine.
+  (let [conf (config/json-str->config (slurp file))]
+    (if-let [maybe-err (verify-conf-acceptable conf (.getCanonicalPath file))]
+      [false maybe-err]
+      [conf nil])))
+
 (defn ->watch-service ^java.nio.file.WatchService
   []
   (.newWatchService (java.nio.file.FileSystems/getDefault)))
 
 (defn register
-  "Helper to call java.nio.file.Watchable.register. Registers the path for
-  java.nio.file.StandardWatchEventKinds/ENTRY_CREATE."
-  [conf-path ^java.nio.file.WatchService watch-service]
+  "Helper to call java.nio.file.Watchable.register. Registers to listen to `event-kinds` events on the
+  path."
+  [conf-path ^java.nio.file.WatchService watch-service event-kinds]
   (let [path (java.nio.file.Path/of conf-path (into-array String []))]
     (.register path watch-service
-               (into-array [java.nio.file.StandardWatchEventKinds/ENTRY_CREATE]))))
+               (into-array event-kinds))))
 
-(defn get-changed-paths
-  "Given a WatchKey, return a seqable of the paths changed. If there are none, return an empty seq."
+(defn get-changed-files
+  "Given a WatchKey, return a seqable of the files changed. If there are none, return an empty seq."
   [^java.nio.file.WatchKey key]
   ;; As long as the WatchEvent.Kind of every event for the key is ENTRY_CREATE, ENTRY_DELETE, or
   ;; ENTRY_MODIFY, java.nio.file.Path.register docs claim the context will be relative path between
@@ -27,31 +50,44 @@
         events (->> key
                     (.pollEvents) ; list of events
                     (map (fn [^java.nio.file.WatchEvent event] (.context event))) ; context from each
-                    ;; Make each relative path into an absolute path to the changed entry
                     (map (fn [^java.nio.file.Path relative-to-change]
-                           (.resolve watched-dir-p relative-to-change))))]
+                           (->> relative-to-change
+                                ;; Make each relative path into an absolute path.
+                                (.resolve watched-dir-p)
+                                ;; Make each absolute path into a file.
+                                (.toFile)))))]
     (.reset key) ; tell the watch service that we have consumed all the events from this key
     events))
 
 (defn handle-changed!
-  [context ^java.nio.file.Path changed-path]
-  (log/debug "Updating config in" changed-path)
-  (let [changed-file (.toFile changed-path)]
-    (let [conf (config/json-str->config (slurp changed-file))
-          {board "board" thread "thread"} conf]
-      (log/info "Config" (.getCanonicalPath changed-file) "is NEW, creating thread")
-      (thread-manager/add-thread! context board thread conf))))
+  [context ^java.io.File changed-file]
+  (log/debug "Updating config in" (.getPath changed-file))
+  (let [[conf err] (maybe-conf changed-file)]
+    (if conf
+      ;; If conf is valid, process it.
+      (let [{board "board" thread "thread"} conf]
+        (if (thread-manager/thread-present? board thread)
+          ;; If thread is present, ignore it
+          (log/info "Ignoring" (.getPath changed-file) "because thread" board thread
+                    "is already in system")
+          ;; If thread is new, add it
+          (do (log/info "Config" (.getCanonicalPath changed-file) "is NEW, creating thread")
+              (thread-manager/add-thread! context board thread conf))))
+      ;; If conf is invalid, log the error. This is `info` because incomplete configs are ok.
+      (log/info err))))
 
 (defn watch-loop
   [context ^java.nio.file.WatchService watch-service]
-  (loop []
+  (loop [] ; Loop forever
     ;; Block waiting for events. Note: can block forever.
-    (let [changed-paths (get-changed-paths (.take watch-service))]
-      (log/debug "Changed paths:" changed-paths)
-      ;; TODO: gracefully handle things that we cannot process as a config change (eg. directories
-      ;; being created)
-      (doseq [changed-p changed-paths]
-        (handle-changed! context changed-p)))
+    (let [changed-files (get-changed-files (.take watch-service))]
+      ;; Get changed "files" (can include dirs and specials
+      (doseq [^java.io.File changed-file changed-files]
+        ;; For non-special files (which is platform specific) handle them, for other things, log
+        ;; that we are ignoring them
+        (if (.isFile changed-file)
+          (handle-changed! context changed-file)
+          (log/info "Ignoring non-file" (.getPath changed-file)))))
     (recur)))
 
 (defn init
@@ -61,7 +97,9 @@
     (let [watch-service (.newWatchService (java.nio.file.FileSystems/getDefault))
           ^Runnable entry-point (partial watch-loop context watch-service)
           th (Thread. entry-point "Config Service")]
-      (register conf-path watch-service) ; watch conf-path
+      ;; watch conf-path
+      (register conf-path watch-service [java.nio.file.StandardWatchEventKinds/ENTRY_CREATE
+                                         java.nio.file.StandardWatchEventKinds/ENTRY_MODIFY])
       (.setDaemon th true)
       (.start th)
       th)))
