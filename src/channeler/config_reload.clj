@@ -47,17 +47,11 @@
   ;; ENTRY_MODIFY, java.nio.file.Path.register docs claim the context will be relative path between
   ;; registered dir and changed entry
   (let [^java.nio.file.Path watched-dir-p (.watchable key) ; TODO: cast? check type?
-        events (->> key
-                    (.pollEvents) ; list of events
-                    (map (fn [^java.nio.file.WatchEvent event] (.context event))) ; context from each
-                    (map (fn [^java.nio.file.Path relative-to-change]
-                           (->> relative-to-change
-                                ;; Make each relative path into an absolute path.
-                                (.resolve watched-dir-p)
-                                ;; Make each absolute path into a file.
-                                (.toFile)))))]
+        events (.pollEvents key)]
     (.reset key) ; tell the watch service that we have consumed all the events from this key
-    events))
+    (for [^java.nio.file.WatchEvent event events]
+      (let [^java.nio.file.Path relative (.context event)] ; Get relative path
+        (.toFile (.resolve watched-dir-p relative)))))) ; Get file for aboslute path
 
 (defn handle-changed!
   [context ^java.io.File changed-file]
