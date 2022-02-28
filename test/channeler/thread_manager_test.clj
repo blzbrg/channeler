@@ -1,5 +1,6 @@
 (ns channeler.thread-manager-test
   (:require [clojure.test :as test]
+            [channeler.test-lib :refer [tmp-dir dir-mock-ctx]]
             [channeler.config :refer [conf-get]]
             [channeler.thread-manager :refer :all]
             [clojure.java.io :as io]
@@ -9,22 +10,6 @@
   (let [base {:conf {"dir" "/a"} :state {}}]
     (test/is (= "/a" (conf-get (:conf (context-for-thread base {})) "dir")))
     (test/is (= "/b" (conf-get (:conf (context-for-thread base {"dir" "/b"})) "dir")))))
-
-;; TODO: does deleteOnExit work when the JVM exits due to lein test failure??
-
-(defn tmp-dir
-  []
-  (let [empty-attrib (into-array java.nio.file.attribute.FileAttribute [])
-        path (-> (System/getProperty "java.io.tmpdir")
-                  (java.nio.file.Path/of (into-array String []))
-                  (java.nio.file.Files/createTempDirectory nil empty-attrib))
-        file (.toFile path)]
-    (.deleteOnExit file)
-    file))
-
-(defn dir-mock-ctx
-  [dir]
-  {:conf {"dir" dir}})
 
 (defn verify-only-log
   "Return `true` iff the log in the format given by `log-test/the-log` contains exacty one entry for

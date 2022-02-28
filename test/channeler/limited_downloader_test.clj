@@ -1,5 +1,6 @@
 (ns channeler.limited-downloader-test
   (:require [clojure.test :as test]
+            [channeler.test-lib :refer [wait-for]]
             [channeler.limited-downloader :as dl]
             [channeler.service :as service]))
 
@@ -7,15 +8,6 @@
   [start]
   (let [at (atom start)]
     [at (fn [] @at)]))
-
-(defn wait-for
-  [cond-fn timeout]
-  (if (cond-fn)
-    true
-    (if (<= timeout 0)
-      false
-      (do (Thread/sleep 10)
-          (recur cond-fn (- timeout 10))))))
 
 (test/deftest basic-expire-test
    (let [asap {::dl/download-url "http://a.b/asap"}
