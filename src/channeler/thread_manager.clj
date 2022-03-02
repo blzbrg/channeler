@@ -11,7 +11,7 @@
 
 (defn context-for-thread
   [general-context additional-conf]
-  (update-in general-context [:conf] config/conf-seq additional-conf))
+  (update-in general-context [:conf] conj [::thread-conf additional-conf]))
 
 (defn spawn-thread!
   "Start a java thread to process a chan thread. Returns a handle referencing it, to be used in

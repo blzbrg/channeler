@@ -49,30 +49,31 @@
                                              "max-sec-between-refresh" 300}}
    "remote-control" {"port" 9001}})
 
-(defn conf-seq
-  "Create a config seq (for use with conf-get). Given a baseline-conf and a additional-conf, returns a
-  sequence where additional-conf comes before baseline-conf."
-  [baseline-conf additional-conf]
-  (cons additional-conf
-        (if (seq? baseline-conf) baseline-conf (list baseline-conf))))
+(def default-conf-seq
+  (list [::default-conf default-conf]))
+
+(defn base
+  "Return a conf seq for the config map, giving it an arbitrary name. Intended for testing."
+  [conf]
+  (list [::base conf]))
 
 (defn replace-conf-head
   "Given a config seq, replace the first config with a new one"
-  [[_ & rest] new-head]
-  (cons new-head rest))
+  [[[orig-name _] & rest] new-head]
+  (cons [orig-name new-head] rest))
 
 (defn incorporate-cli-options
   [conf {merge-opts :merge-opts}]
-  (conf-seq conf merge-opts))
+  (cons [::conf-from-cli merge-opts] conf))
 
 (defn from-file
   "Load a config, either from a provided path, or from the default locations (documented in
   default-paths). If path is nil, just use the default conf."
   ([] (from-file (first-usable-file (default-paths))))
   ([path] (if (some? path)
-            (conf-seq default-conf
-                      (json/read (io/reader path)))
-            default-conf)))
+            (cons [::conf-from-file (json/read (io/reader path))]
+                  default-conf-seq)
+            default-conf-seq)))
 
 (defn conf-get
   "Try the sequence of configs looking for one that contains a value at the \"path\" described by
@@ -82,7 +83,7 @@
     ;; if there is just one config, get from it directly
     (get-in config keys)
     ;; if there is a sequence of configs, look through them for one that contains it
-    (loop [[individual-conf & rest] config]
+    (loop [[[_ individual-conf] & rest] config]
       ;; if this item in the conf sequence is not a map, assume it can be derefed. This allows
       ;; multiple threads to share a global config easily through an atom.
       (let [eff-conf (if (map? individual-conf) individual-conf @individual-conf)]
