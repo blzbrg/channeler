@@ -42,8 +42,8 @@
 
 (test/deftest watch-and-handle-test
   (let [dir (test-lib/tmp-dir)
-        context {:conf {"dir" (.getAbsolutePath dir)
-                        "thread-conf-dir" (.getAbsolutePath dir)}}
+        context {:conf (config/base {"dir" (.getAbsolutePath dir)
+                                     "thread-conf-dir" (.getAbsolutePath dir)})}
         call-atom (atom (list))]
     (with-redefs [channeler.thread-manager/add-thread!
                   (partial generic-mock call-atom 'channeler.thread-manager/add-thread!)

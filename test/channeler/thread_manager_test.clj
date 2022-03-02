@@ -71,8 +71,8 @@
       (log-test/with-log
         (test/testing "Un-createable subdir (create-missing-parents)"
           (let [ro-subdir-path (.getAbsolutePath (io/file ro-dir "uncreatable-subdir"))]
-            (spawn-thread! (assoc-in (dir-mock-ctx ro-subdir-path)
-                                     [:conf "create-missing-parents"] true)
+            (spawn-thread! {:conf (config/base {"dir" ro-subdir-path
+                                                "create-missing-parents" true})}
                            "abc" 1)
             (test/is (verify-only-log (log-test/the-log) 'channeler.thread-manager :error
                                       #"is not writeable")

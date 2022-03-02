@@ -20,6 +20,12 @@
       (is (= 1 (config/conf-get conf :a)))
       (is (nil? (config/conf-get conf :c))))))
 
+(deftest get-two-step-path-test
+  (let [bot {:a {:b :c}}]
+    (doseq [conf [(config/base bot)
+                  (cons [:a {}] (config/base bot))]]
+      (is (= :c (config/conf-get conf :a :b))))))
+
 (deftest get-avoid-explicit-nil-test
   "Should treat explicit nils as a missing entry. This is not actually an important behavior, but
   test it to make sure it is consistent."
