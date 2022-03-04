@@ -1,4 +1,16 @@
 (ns channeler.config-reload
+  "Watch a directory. Every time a file is created or edited in this directory, try to parse it as
+  json and use it to configure a thread. Invalid configs are ignored, and configs that describe a
+  thread which already exists replace the configuration of that thread.
+
+  Subdirectories and anything that is not a normal file are ignored. This means that this does not
+  recursively watch.
+
+  An example config for thread 42 in board /b/ writing into dir /tmp/b/42 would look like:
+  {\"board\":\"b\", \"thread\":42, \"dir\":\"/tmp/b/42\"}
+
+  Config:
+  thread-conf-dir: Path to directory to watch."
   (:require [channeler.thread-manager :as thread-manager]
             [channeler.config :as config]
             [clojure.data.json :as json]
