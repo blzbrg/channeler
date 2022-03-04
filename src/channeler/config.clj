@@ -57,10 +57,13 @@
   [conf]
   (list [::base conf]))
 
-(defn replace-conf-head
-  "Given a config seq, replace the first config with a new one"
-  [[[orig-name _] & rest] new-head]
-  (cons [orig-name new-head] rest))
+(defn replace-conf
+  "Replace the first conf of the seq with name `target-name` with `new-conf`."
+  [conf-seq target-name new-conf]
+  (map (fn [[existing-name _ :as existing]] (if (= target-name existing-name)
+                                              [target-name new-conf]
+                                              existing))
+       conf-seq))
 
 (defn incorporate-cli-options
   [conf {merge-opts :merge-opts}]

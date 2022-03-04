@@ -34,3 +34,8 @@
                   (list [:top (atom first)] [:bot second])
                   (list [:top first] [:bot (atom second)])]]
       (is (= 1 (config/conf-get conf :a))))))
+
+(deftest replace-conf-test
+  (let [input (list [:top {:a 1}] [:bot {:a 2}])]
+    (is (= (list [:top {:a 3}] [:bot {:a 2}])
+           (config/replace-conf input :top {:a 3})))))
