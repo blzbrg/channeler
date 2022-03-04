@@ -34,6 +34,15 @@
   ([context board-name thread-id per-thread-conf]
    (spawn-thread! (context-for-thread context per-thread-conf) board-name thread-id)))
 
+(defn reconfigure-thread!
+  [board-name thread-id new-conf]
+  (let [thread-ref (@thread-handles [board-name thread-id])]
+    (send thread-ref
+          update :channeler.chan-th/conf
+          ;; TODO: just replacing the head is hacky. What even is the purpose of this seq? What does
+          ;; it mean to be the head?
+          config/replace-conf-head new-conf)))
+
 (defn wait-for-completion
   [handles]
   (let [incomplete (->> handles
