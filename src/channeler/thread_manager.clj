@@ -28,18 +28,23 @@
         (let [th-ref (chan-th/create context [board-name thread-id])]
           (swap! thread-handles assoc [board-name thread-id] th-ref))))))
 
+;; Two thread APIs since remote-command needs add-thread! and config-reload needs add-configured-thread!
+
 (defn add-thread!
   "Spawn thread and return handle (see spawn-thread!), optionally adding per-thread config."
   ([context board-name thread-id] (spawn-thread! context board-name thread-id))
   ([context board-name thread-id per-thread-conf]
    (spawn-thread! (context-for-thread context per-thread-conf) board-name thread-id)))
 
+(defn add-configured-thread!
+  "Spawn thread with given associative conf seq, and return handle."
+  [context board-name thread-id conf]
+  (spawn-thread! (assoc context :conf conf) board-name thread-id))
+
 (defn reconfigure-thread!
   [board-name thread-id new-conf]
   (let [thread-ref (@thread-handles [board-name thread-id])]
-    (send thread-ref
-          update :channeler.chan-th/conf
-          config/replace-conf ::thread-conf new-conf)))
+    (send thread-ref assoc :channeler.chan-th/conf new-conf)))
 
 (defn wait-for-completion
   [handles]

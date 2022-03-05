@@ -23,22 +23,28 @@
   [conf path]
   (let [prefix (str "Config " path)
         mk (fn [key] (str prefix " missing key \"" key "\""))]
-    (if (nil? conf)
-      (str prefix " could not be parsed as JSON") ; TODO: communicate exception?
-      (condp (fn [key conf] (not (contains? conf key))) conf
-        "board" (mk "board")
-        "thread" (mk "thread")
-        "dir" (mk "dir")
-        false))))
+    (condp (fn [key conf] (nil? (config/conf-get conf key))) conf
+      "board" (mk "board")
+      "thread" (mk "thread")
+      "dir" (mk "dir")
+      false)))
 
 (defn maybe-conf
   "If `file` contains a valid config, return `[conf ...]`, otherwise return `[false error-message]`."
-  [^java.io.File file]
+  [{context-conf :conf} ^java.io.File file]
   ;; json-str->config gives nil when it fails to parse, so incomplete/invalid JSON is fine.
-  (let [conf (config/json-str->config (slurp file))]
-    (if-let [maybe-err (verify-conf-acceptable conf (.getCanonicalPath file))]
-      [false maybe-err]
-      [conf nil])))
+  (if-let [raw-thread-conf (config/json-str->config (slurp file))]
+    ;; If file loaded/parsed, construct actual conf seq and validate it
+    (let [conf (cons [::thread-conf raw-thread-conf] context-conf)
+          maybe-err (verify-conf-acceptable conf (.getCanonicalPath file))]
+      (if maybe-err
+        [false maybe-err]
+        [conf nil]))
+    ;; File could not load/parse
+    ;;
+    ;; TODO: communicate exception?
+    [false (str "Config " (.getCanonicalPath file) " could not be parsed as JSON")]))
+
 
 (defn ->watch-service ^java.nio.file.WatchService
   []
@@ -70,17 +76,19 @@
 (defn handle-changed!
   [context ^java.io.File changed-file]
   (log/debug "handle-changed for" (.getPath changed-file))
-  (let [[conf err] (maybe-conf changed-file)]
+  (let [[conf err] (maybe-conf context changed-file)]
     (if conf
       ;; If conf is valid, process it.
-      (let [{board "board" thread "thread"} conf]
+      (let [board (config/conf-get conf "board")
+            thread (config/conf-get conf "thread")]
+        (log/debug "Resulting config:" conf)
         (if (thread-manager/thread-present? board thread)
           ;; If thread is present, reconfigure it
           (do (log/info "Config" (.getCanonicalPath changed-file) "is UPDATED, reconfiguring thread")
               (thread-manager/reconfigure-thread! board thread conf))
           ;; If thread is new, add it
           (do (log/info "Config" (.getCanonicalPath changed-file) "is NEW, creating thread")
-              (thread-manager/add-thread! context board thread conf))))
+              (thread-manager/add-configured-thread! context board thread conf))))
       ;; If conf is invalid, log the error. This is `info` because incomplete configs are ok.
       (log/info err))))
 
