@@ -23,7 +23,7 @@
 
 (def sample-th-ctx
   {:channeler.chan-th/board "po"
-   :channeler.chan-th/conf (list {"dir" "/a/b"})
+   :channeler.chan-th/conf (channeler.config/base {"dir" "/a/b"})
    :channeler.chan-th/state {}})
 
 (test/deftest applicable-and-transform-test

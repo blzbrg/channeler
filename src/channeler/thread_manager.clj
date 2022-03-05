@@ -11,7 +11,7 @@
 
 (defn context-for-thread
   [general-context additional-conf]
-  (update-in general-context [:conf] config/conf-seq additional-conf))
+  (update-in general-context [:conf] conj [::thread-conf additional-conf]))
 
 (defn spawn-thread!
   "Start a java thread to process a chan thread. Returns a handle referencing it, to be used in
@@ -39,9 +39,7 @@
   (let [thread-ref (@thread-handles [board-name thread-id])]
     (send thread-ref
           update :channeler.chan-th/conf
-          ;; TODO: just replacing the head is hacky. What even is the purpose of this seq? What does
-          ;; it mean to be the head?
-          config/replace-conf-head new-conf)))
+          config/replace-conf ::thread-conf new-conf)))
 
 (defn wait-for-completion
   [handles]

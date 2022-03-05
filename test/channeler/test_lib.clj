@@ -1,4 +1,5 @@
-(ns channeler.test-lib)
+(ns channeler.test-lib
+  (:require [channeler.config :as config]))
 
 ;; TODO: does deleteOnExit work when the JVM exits due to lein test failure??
 
@@ -14,7 +15,7 @@
 
 (defn dir-mock-ctx
   [dir]
-  {:conf {"dir" dir}})
+  {:conf (config/base {"dir" dir})})
 
 (defn wait-for
   [cond-fn timeout]

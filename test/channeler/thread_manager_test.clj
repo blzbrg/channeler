@@ -1,13 +1,13 @@
 (ns channeler.thread-manager-test
   (:require [clojure.test :as test]
             [channeler.test-lib :refer [tmp-dir dir-mock-ctx]]
-            [channeler.config :refer [conf-get]]
+            [channeler.config :as config :refer [conf-get]]
             [channeler.thread-manager :refer :all]
             [clojure.java.io :as io]
             [clojure.tools.logging.test :as log-test]))
 
 (test/deftest context-for-thread-test
-  (let [base {:conf {"dir" "/a"} :state {}}]
+  (let [base {:conf (config/base {"dir" "/a"}) :state {}}]
     (test/is (= "/a" (conf-get (:conf (context-for-thread base {})) "dir")))
     (test/is (= "/b" (conf-get (:conf (context-for-thread base {"dir" "/b"})) "dir")))))
 
@@ -71,8 +71,8 @@
       (log-test/with-log
         (test/testing "Un-createable subdir (create-missing-parents)"
           (let [ro-subdir-path (.getAbsolutePath (io/file ro-dir "uncreatable-subdir"))]
-            (spawn-thread! (assoc-in (dir-mock-ctx ro-subdir-path)
-                                     [:conf "create-missing-parents"] true)
+            (spawn-thread! {:conf (config/base {"dir" ro-subdir-path
+                                                "create-missing-parents" true})}
                            "abc" 1)
             (test/is (verify-only-log (log-test/the-log) 'channeler.thread-manager :error
                                       #"is not writeable")

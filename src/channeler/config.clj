@@ -49,46 +49,46 @@
                                              "max-sec-between-refresh" 300}}
    "remote-control" {"port" 9001}})
 
-(defn conf-seq
-  "Create a config seq (for use with conf-get). Given a baseline-conf and a additional-conf, returns a
-  sequence where additional-conf comes before baseline-conf."
-  [baseline-conf additional-conf]
-  (cons additional-conf
-        (if (seq? baseline-conf) baseline-conf (list baseline-conf))))
+(def default-conf-seq
+  (list [::default-conf default-conf]))
 
-(defn replace-conf-head
-  "Given a config seq, replace the first config with a new one"
-  [[_ & rest] new-head]
-  (cons new-head rest))
+(defn base
+  "Return a conf seq for the config map, giving it an arbitrary name. Intended for testing."
+  [conf]
+  (list [::base conf]))
+
+(defn replace-conf
+  "Replace the first conf of the seq with name `target-name` with `new-conf`."
+  [conf-seq target-name new-conf]
+  (map (fn [[existing-name _ :as existing]] (if (= target-name existing-name)
+                                              [target-name new-conf]
+                                              existing))
+       conf-seq))
 
 (defn incorporate-cli-options
   [conf {merge-opts :merge-opts}]
-  (conf-seq conf merge-opts))
+  (cons [::conf-from-cli merge-opts] conf))
 
 (defn from-file
   "Load a config, either from a provided path, or from the default locations (documented in
   default-paths). If path is nil, just use the default conf."
   ([] (from-file (first-usable-file (default-paths))))
   ([path] (if (some? path)
-            (conf-seq default-conf
-                      (json/read (io/reader path)))
-            default-conf)))
+            (cons [::conf-from-file (json/read (io/reader path))]
+                  default-conf-seq)
+            default-conf-seq)))
 
 (defn conf-get
   "Try the sequence of configs looking for one that contains a value at the \"path\" described by
   keys. Each key in the \"path\" is a key into a map, matching the semantics of get-in."
   [config & keys]
-  (if (map? config)
-    ;; if there is just one config, get from it directly
-    (get-in config keys)
-    ;; if there is a sequence of configs, look through them for one that contains it
-    (loop [[individual-conf & rest] config]
-      ;; if this item in the conf sequence is not a map, assume it can be derefed. This allows
-      ;; multiple threads to share a global config easily through an atom.
-      (let [eff-conf (if (map? individual-conf) individual-conf @individual-conf)]
-        (let [val (get-in eff-conf keys)]
-          (if (nil? val)
-            (if (some? rest)
-              (recur rest) ; if it's missing, keep looping
-              nil) ;; if no more confs left, terminate with unfound
-            val)))))) ; if it's present, terminate with the value
+  (loop [[[_ individual-conf] & rest] config]
+    ;; if this item in the conf sequence is not a map, assume it can be derefed. This allows
+    ;; multiple threads to share a global config easily through an atom.
+    (let [eff-conf (if (map? individual-conf) individual-conf @individual-conf)]
+      (let [val (get-in eff-conf keys)]
+        (if (nil? val)
+          (if (some? rest)
+            (recur rest) ; if it's missing, keep looping
+            nil) ;; if no more confs left, terminate with unfound
+          val))))) ; if it's present, terminate with the value
