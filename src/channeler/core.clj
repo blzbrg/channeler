@@ -6,7 +6,6 @@
             [channeler.config-reload :as config-reload]
             [channeler.limited-downloader :as limited-downloader]
             [channeler.log-config :as log-config]
-            [channeler.remote-control :as remote-control]
             [channeler.text-commands :as text-commands]
             [channeler.thread-manager :as thread-manager]
             [clojure.tools.logging :as log]))
@@ -44,14 +43,13 @@
                   ;; capture the state at the time it is initted.
                   (assoc context :state (plugin-loader/load-plugins context))
                   (assoc context :state (limited-downloader/init context)))]
-    (config-reload/init context)
     ;; if it is present, handle the text command. Do this even if daemon is called for.
     (if (text-commands/is-command? parsed)
       (text-commands/handle-command context parsed))
     (if (:daemon cli-opts)
       ;; if daemon is called for, start it and wait forever
-      (let [context (assoc context :state (remote-control/init context))]
-        @(promise)) ; wait forever. TODO: sane finishing logic
+      (do (config-reload/init context)
+          @(promise)) ; wait forever. TODO: sane finishing logic
       ;; otherwise, wait for anything started by handle-command then exit.
       (thread-manager/wait-for-all-to-complete))
     (shutdown-agents)))
