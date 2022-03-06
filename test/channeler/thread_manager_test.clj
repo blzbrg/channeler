@@ -6,11 +6,6 @@
             [clojure.java.io :as io]
             [clojure.tools.logging.test :as log-test]))
 
-(test/deftest context-for-thread-test
-  (let [base {:conf (config/base {"dir" "/a"}) :state {}}]
-    (test/is (= "/a" (conf-get (:conf (context-for-thread base {})) "dir")))
-    (test/is (= "/b" (conf-get (:conf (context-for-thread base {"dir" "/b"})) "dir")))))
-
 (defn verify-only-log
   "Return `true` iff the log in the format given by `log-test/the-log` contains exacty one entry for
   which `log-test/matches?` returns `true`."

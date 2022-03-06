@@ -88,7 +88,7 @@
               (thread-manager/reconfigure-thread! board thread conf))
           ;; If thread is new, add it
           (do (log/info "Config" (.getCanonicalPath changed-file) "is NEW, creating thread")
-              (thread-manager/add-configured-thread! context board thread conf))))
+              (thread-manager/add-thread! context board thread conf))))
       ;; If conf is invalid, log the error. This is `info` because incomplete configs are ok.
       (log/info err))))
 

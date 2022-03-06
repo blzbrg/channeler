@@ -38,7 +38,7 @@
 (defn thread-added?
   [call-seq target-board target-thread]
   (not-empty
-   (query call-seq ['channeler.thread-manager/add-configured-thread! :dontcare target-board
+   (query call-seq ['channeler.thread-manager/add-thread! :dontcare target-board
                     target-thread])))
 
 
@@ -48,8 +48,8 @@
                                      "thread-conf-dir" (.getAbsolutePath dir)
                                      "board" "b"})}
         call-atom (atom (list))]
-    (with-redefs [channeler.thread-manager/add-configured-thread!
-                  (partial generic-mock call-atom 'channeler.thread-manager/add-configured-thread!)
+    (with-redefs [channeler.thread-manager/add-thread!
+                  (partial generic-mock call-atom 'channeler.thread-manager/add-thread!)
                   channeler.thread-manager/reconfigure-thread!
                   (partial generic-mock call-atom 'channeler.thread-manager/reconfigure-thread!)
                   channeler.thread-manager/thread-present?
@@ -60,7 +60,7 @@
         (test/testing "Write config - this should cause an add"
           (write-json conf-file {"thread" 1})
           (test/is (= true (test-lib/wait-for #(not-empty @call-atom) 2000)))
-          (test/is (= 1 (count (query @call-atom ['channeler.thread-manager/add-configured-thread!
+          (test/is (= 1 (count (query @call-atom ['channeler.thread-manager/add-thread!
                                                   :dontcare "b" 1]))))
           ;; Every file creation comes with a CREATE and MODIFY event. We don't need both, but
           ;; empirically this is how they show up on linux, so encode it in the test.
