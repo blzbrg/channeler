@@ -6,17 +6,24 @@
             [channeler.config-reload :as config-reload]
             [channeler.limited-downloader :as limited-downloader]
             [channeler.log-config :as log-config]
-            [channeler.text-commands :as text-commands]
             [channeler.thread-manager :as thread-manager]
-            [clojure.tools.logging :as log]))
+            [clojure.tools.logging :as log]
+            [clojure.tools.cli]))
 
 (defn eprintln
   [& args]
   (binding [*out* *err*] (apply println args)))
 
+(def parser
+  [["-m" "--mergeOpts JSON" "JSON structure to merge with the config loaded from files"
+    :id :merge-opts
+    :default {}
+    :parse-fn config/json-str->config
+    :validate [#(map? %) "Must parse to a valid JSON map"]]])
+
 (defn do-cli
   [args]
-  (let [cli-opts (text-commands/parse-from-arglist args)]
+  (let [cli-opts (clojure.tools.cli/parse-opts args parser)]
     (if (:errors cli-opts) ; there are errors if this value is truthy
       (do (eprintln (:errors cli-opts))
           (System/exit 1))
@@ -43,13 +50,5 @@
                   ;; capture the state at the time it is initted.
                   (assoc context :state (plugin-loader/load-plugins context))
                   (assoc context :state (limited-downloader/init context)))]
-    ;; if it is present, handle the text command. Do this even if daemon is called for.
-    (if (text-commands/is-command? parsed)
-      (text-commands/handle-command context parsed))
-    (if (:daemon cli-opts)
-      ;; if daemon is called for, start it and wait forever
-      (do (config-reload/init context)
-          @(promise)) ; wait forever. TODO: sane finishing logic
-      ;; otherwise, wait for anything started by handle-command then exit.
-      (thread-manager/wait-for-all-to-complete))
-    (shutdown-agents)))
+    (config-reload/init context)
+    @(promise))) ; wait forever. TODO: sane finishing logic
