@@ -38,15 +38,18 @@
 (defn thread-added?
   [call-seq target-board target-thread]
   (not-empty
-   (query call-seq ['channeler.thread-manager/add-thread! :dontcare target-board target-thread])))
+   (query call-seq ['channeler.thread-manager/add-configured-thread! :dontcare target-board
+                    target-thread])))
+
 
 (test/deftest watch-and-handle-test
   (let [dir (test-lib/tmp-dir)
         context {:conf (config/base {"dir" (.getAbsolutePath dir)
-                                     "thread-conf-dir" (.getAbsolutePath dir)})}
+                                     "thread-conf-dir" (.getAbsolutePath dir)
+                                     "board" "b"})}
         call-atom (atom (list))]
-    (with-redefs [channeler.thread-manager/add-thread!
-                  (partial generic-mock call-atom 'channeler.thread-manager/add-thread!)
+    (with-redefs [channeler.thread-manager/add-configured-thread!
+                  (partial generic-mock call-atom 'channeler.thread-manager/add-configured-thread!)
                   channeler.thread-manager/reconfigure-thread!
                   (partial generic-mock call-atom 'channeler.thread-manager/reconfigure-thread!)
                   channeler.thread-manager/thread-present?
@@ -54,23 +57,22 @@
       (let [conf-file (io/file dir "conf1.json")
             watch-thread (config-reload/init context)]
         ;; TODO: test incomplete config and non-file...how do we do this in a non-racey manner?
-        (test/testing "Write complete config - this should cause an add"
-          (write-json conf-file {"board" "b" "thread" 1 "dir" (.getAbsolutePath dir)})
+        (test/testing "Write config - this should cause an add"
+          (write-json conf-file {"thread" 1})
           (test/is (= true (test-lib/wait-for #(not-empty @call-atom) 2000)))
-          (test/is (= 1 (count (query @call-atom ['channeler.thread-manager/add-thread!
+          (test/is (= 1 (count (query @call-atom ['channeler.thread-manager/add-configured-thread!
                                                   :dontcare "b" 1]))))
           ;; Every file creation comes with a CREATE and MODIFY event. We don't need both, but
           ;; empirically this is how they show up on linux, so encode it in the test.
           (test/is (= 1 (count (query @call-atom
                                       ['channeler.thread-manager/reconfigure-thread! "b" 1])))))
         (test/testing "Reconfigure thread - change dir and check for a reconfigure call"
-          (reset! call-atom (list))
+          ;; This also tests that the dir from the base config can be overwritten by the
+          ;; higher-level config.
+          (test-lib/wait-for #(empty? @call-atom) 2000)
           (let [new-path (.getAbsolutePath (io/file dir "newdir"))]
-            (write-json conf-file {"board" "b" "thread" 1 "dir" new-path})
-            (test/is (test-lib/wait-for #(not-empty @call-atom) 2000))
-            (let [reconf-calls (query @call-atom
-                                      ['channeler.thread-manager/reconfigure-thread! "b" 1])
-                  [reconf & rest] reconf-calls ; get the first reconfigure-thread! call
-                  [_ _ _ new-conf] reconf] ; get new conf from reconfigure-thread! call
-              (test/is (empty? rest)) ; first reconfigure-thread! call should be the only one
-              (test/is (= new-path (new-conf "dir"))))))))))
+            (write-json conf-file {"thread" 1 "dir" new-path})
+            ;; Wait for latest call to be the reconfig which applies the new directory
+            (test/is (test-lib/wait-for
+                      (fn [] (let [[_ _ _ new-conf] (first @call-atom)]
+                               (= new-path (config/conf-get new-conf "dir")))) 2000))))))))

@@ -107,13 +107,13 @@
         ;; When unmodifids is 0 this equals base-wait-sec.
         computed-sec (* base-wait-sec (Math/pow 2 unmodifieds))
         max-sec (conf-get conf
-                          "thread" "no-new-posts-refresh-backoff" "max-sec-between-refresh")]
+                          "refresh" "no-new-posts-refresh-backoff" "max-sec-between-refresh")]
     (min computed-sec max-sec)))
 
 (defn ^:private wait-time
   [conf th]
-  (let [base-wait-sec (conf-get conf "thread" "min-sec-between-refresh")
-        strategy (conf-get conf "thread" "no-new-posts-refresh-backoff" "backoff-strategy")
+  (let [base-wait-sec (conf-get conf "refresh" "min-sec-between-refresh")
+        strategy (conf-get conf "refresh" "no-new-posts-refresh-backoff" "backoff-strategy")
         sec (if (= "exponential" strategy)
               (exponential-backoff-wait-time conf th base-wait-sec)
               base-wait-sec)]

@@ -121,7 +121,7 @@
   {:state {:post-transcade {:transformers (list (image-download/->RequestImageDownload))}
            :service-map {:channeler.limited-downloader/rate-limited-downloader
                          (->MockService request-log-ref)}}
-   :conf (conf/base {"dir" "/tmp/channeler" "thread" {"min-sec-between-refresh" 10}})})
+   :conf (conf/base {"dir" "/tmp/channeler" "refresh" {"min-sec-between-refresh" 10}})})
 
 (defn relevant-req-keys
   "Relevant keys from a request, eg. leave out anything incomparable like functions."

@@ -44,9 +44,9 @@
 (def default-conf
   {"plugins" {"channeler.image-download" {"type" "clojure-ns"}}
    "network-rate-limit" {"min-sec-between-downloads" 1}
-   "thread" {"min-sec-between-refresh" 10
-             "no-new-posts-refresh-backoff" {"backoff-strategy" "exponential"
-                                             "max-sec-between-refresh" 300}}
+   "refresh" {"min-sec-between-refresh" 10
+              "no-new-posts-refresh-backoff" {"backoff-strategy" "exponential"
+                                              "max-sec-between-refresh" 300}}
    "remote-control" {"port" 9001}})
 
 (def default-conf-seq
